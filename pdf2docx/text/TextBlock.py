@@ -322,9 +322,15 @@ class TextBlock(Block):
 
     def _detect_markers(self, flat):
         '''Find spans in `flat` that look like a list marker glyph (bullet or
-        ``"1."``-style number) rendered in a visibly different style from the
-        span right after it -- a strong signal it's a marker glyph inlined by
-        the PDF producer, not part of the sentence.
+        ``"1."``-style number).
+
+        A bullet glyph (``•``, ``○``, ...) is essentially never legitimate
+        sentence content, so it's accepted as a marker on text alone. A
+        ``"1."``-style number is much more likely to be a false positive --
+        e.g. a plain numbered heading like "1. Introduction" that should stay
+        literal text -- so it additionally requires a visibly different style
+        from the span right after it, a strong signal it's a marker glyph
+        inlined by the PDF producer rather than part of the heading text.
 
         Returns:
             dict: ``id(span) -> (kind, level)`` for every detected marker
@@ -340,14 +346,13 @@ class TextBlock(Block):
                 kind = ('bullet', _BULLET_MARKERS[text])
             elif _NUMBERED_MARKER_RE.match(text):
                 kind = ('number', 0)
+                # prefer the following span for the style-contrast check (the
+                # marker's own content); fall back to the preceding one if the
+                # marker is the very last span in the block
+                neighbor = flat[idx+1][1] if idx+1<n else (flat[idx-1][1] if idx>0 else None)
+                if neighbor is None or self._span_style(span)==self._span_style(neighbor): continue
             else:
                 continue
-
-            # prefer the following span for the style-contrast check (the
-            # marker's own content); fall back to the preceding one if the
-            # marker is the very last span in the block
-            neighbor = flat[idx+1][1] if idx+1<n else (flat[idx-1][1] if idx>0 else None)
-            if neighbor is None or self._span_style(span)==self._span_style(neighbor): continue
 
             markers[id(span)] = kind
         return markers
