@@ -394,7 +394,7 @@ requires-dist = [
 ]
 
 [[package]]
-name = "pdf2word"
+name = "pdf2docx-eval"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

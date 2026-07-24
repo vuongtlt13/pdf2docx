@@ -1,7 +1,7 @@
 [project]
-name = "pdf2word"
+name = "pdf2docx-eval"
 version = "0.1.0"
-description = "Convert text-based PDF files to Word (.docx), preserving layout"
+description = "Round-trip evaluation harness for the pdf2docx fork"
 requires-python = ">=3.11"
 dependencies = [
     "pdf2docx",

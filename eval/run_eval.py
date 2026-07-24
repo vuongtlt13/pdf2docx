@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Round-trip visual accuracy eval for pdf2word conversion.
+"""Round-trip visual accuracy eval for this pdf2docx fork.
 
-Samples are discovered recursively under eval/samples/ -- any directory
+Samples are discovered recursively under samples/ -- any directory
 (at any nesting depth) containing original.docx is treated as one sample,
-named by its path relative to eval/samples/ (e.g. vi/unicode/arial).
+named by its path relative to samples/ (e.g. vi/unicode/arial).
 Each sample needs:
     original.docx - ground-truth DOCX the conversion should match
     input.pdf     - optional; the PDF to convert. If missing, one is
@@ -21,7 +21,7 @@ For each sample this script:
          (text_diff_loose.txt) -- reflects how much text a user would retype
 
 Results (rendered PDFs, page images, diffs, scores.json) are written to
-eval/results/<sample>/ so they can be inspected between iterations.
+results/<sample>/ so they can be inspected between iterations.
 """
 import difflib
 import json
@@ -336,10 +336,10 @@ def print_score_table(all_results: list[dict]) -> None:
     print(
         "\nssim: 0.0-1.0, higher is better (1.0 = identical) -- visual round-trip similarity. "
         "text_sim: 0.0-1.0, higher is better -- whole-document word-sequence similarity after "
-        "collapsing all whitespace/line-breaks (eval/results/<sample>/text_diff_loose.txt); "
+        "collapsing all whitespace/line-breaks (results/<sample>/text_diff_loose.txt); "
         "reflects how much text a user would actually have to retype, ignoring paragraph/line "
         "splits. text_strict (text_sim_strict): 0.0-1.0, higher is better -- paragraph/table-row "
-        "level similarity (eval/results/<sample>/text_diff.txt); sensitive to a paragraph being "
+        "level similarity (results/<sample>/text_diff.txt); sensitive to a paragraph being "
         "split/merged differently even when the words are identical. "
         "changed: absolute diff line count (strict), lower is better, NOT normalized by doc "
         "length -- only meaningful when tracking one sample across runs. "
@@ -369,7 +369,7 @@ def main() -> None:
             continue
         all_results.append(result)
         if result["changed_lines"]:
-            print(f"[{name}] see eval/results/{name}/text_diff.txt for the exact diff")
+            print(f"[{name}] see results/{name}/text_diff.txt for the exact diff")
 
     if all_results:
         print("\n=== Score table ===")
