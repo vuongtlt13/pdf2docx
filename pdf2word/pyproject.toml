@@ -1,0 +1,16 @@
+[project]
+name = "pdf2word"
+version = "0.1.0"
+description = "Convert text-based PDF files to Word (.docx), preserving layout"
+requires-python = ">=3.11"
+dependencies = [
+    "pdf2docx",
+]
+
+[tool.uv.sources]
+pdf2docx = { path = "..", editable = true }
+
+[dependency-groups]
+eval = [
+    "scikit-image>=0.26.0",
+]
