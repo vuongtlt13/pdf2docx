@@ -37,17 +37,11 @@ eval/
     text_diff.txt, text_diff_loose.txt, scores.json
 ```
 
-This directory is its own `uv` project, depending on the parent `pdf2docx`
-checkout via an editable path dependency in `pyproject.toml`:
-
-```toml
-[tool.uv.sources]
-pdf2docx = { path = "..", editable = true }
-```
-
-Because it's an editable install, changes made to the parent `pdf2docx`
-checkout take effect immediately — no reinstall needed between edits and
-eval runs.
+This directory shares the `pdf2docx` package's own `uv` project (root
+`pyproject.toml`) rather than being its own project — eval-only dependencies
+(`scikit-image`) live in the `dev` dependency group there. Since `pdf2docx`
+itself is installed from the repo root, changes made to the fork take effect
+immediately — no reinstall needed between edits and eval runs.
 
 ## Setup
 
@@ -59,21 +53,23 @@ Requirements:
   auto-generate `input.pdf` from `original.docx` when a sample doesn't ship
   its own PDF.
 
+Run from the **repo root** (not from inside `eval/`):
+
 ```bash
-cd eval
-uv sync --group eval
+uv sync --group dev
 ```
 
 **Gotcha:** if you have another project's virtualenv active in your shell
 (`$VIRTUAL_ENV` set), `unset VIRTUAL_ENV` before running any `uv run ...`
-command in this directory, otherwise `uv` may resolve dependencies against
-the wrong environment. Always run `uv` commands from inside `eval/`, not
-from the parent `pdf2docx/`.
+command, otherwise `uv` may resolve dependencies against the wrong
+environment.
 
 ## Evaluation (`run_eval.py`)
 
+Run from the repo root:
+
 ```bash
-uv run run_eval.py
+uv run eval/run_eval.py
 ```
 
 Samples are discovered recursively under `samples/` — any directory (at any

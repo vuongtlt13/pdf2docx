@@ -1,0 +1,11 @@
+[project]
+name = "pdf2docx"
+dynamic = ["version", "description", "readme", "requires-python", "dependencies"]
+
+[tool.uv]
+package = true
+
+[dependency-groups]
+dev = [
+    "scikit-image>=0.26.0",
+]

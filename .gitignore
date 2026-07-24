@@ -3,6 +3,11 @@
 *.jp*g
 layout.json
 .vscode/
+.venv/
+.~lock.*#
+
+# eval harness (see eval/README.md)
+eval/results/
 
 # pdf testing files
 *.pdf
