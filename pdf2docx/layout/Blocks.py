@@ -232,15 +232,22 @@ class Blocks(ElementCollection):
             # flow layout or not?
             if row.is_flow_layout(line_separate_threshold, cell_layout=cell_layout):
                 close_table()
+                added = set()
             elif kwargs.get('list_not_table') and is_list_item(row[0].text):
                  # Don't interpret list-style bullet characters/numbers as
                  # indicating a table.
                  close_table()
+                 added = set()
             else:
                 table_lines.extend([sub_line(block) for block in row])
+                added = {id(block) for block in row}
 
-            # contained in shading or not?
+            # contained in shading or not? Skip blocks already added above --
+            # a block that is both a stream-table column AND inside a shading
+            # rect must only be counted once, otherwise it duplicates into two
+            # cells (see eval/ISSUES.md bug B2).
             for block in row:
+                if id(block) in added: continue
                 if contained_in_shadings(block): table_lines.append(sub_line(block))
             
             # close table if significant vertical distance 

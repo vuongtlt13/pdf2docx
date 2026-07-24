@@ -138,6 +138,22 @@ eval tự động.
      `grep -rn '\t' eval/results/*/text_diff*.txt eval/results/*/*/text_diff*.txt`
      — không còn dòng `+`/`-` nào chứa tab trong toàn bộ 6 mẫu.
 
+8. **Một Line bị append trùng 2 lần vào cùng 1 hàng bảng giả** (một phần
+   root cause của bug B2 bên dưới) — `collect_stream_lines()`
+   (`pdf2docx/layout/Blocks.py`) sau khi quyết định nhánh chính cho 1 hàng
+   (flow layout / list item / hay stream-table column, append vào
+   `table_lines`), có thêm 1 vòng lặp riêng, **không điều kiện**, append
+   thêm mọi block trong hàng thoả `contained_in_shadings()` — kể cả những
+   block *đã* được append ở nhánh else phía trên. Kết quả: 1 block vừa là
+   cột bảng giả vừa nằm trong vùng tô nền thì bị thêm vào `table_lines`
+   **2 lần**, tạo ra ô trùng lặp trong bảng dựng ra.
+   - **Fix:** theo dõi các block đã append (`added` set các `id(block)`)
+     ở nhánh chính, rồi bỏ qua chúng trong vòng lặp `contained_in_shadings()`.
+   - **Verify:** `eval/run_eval.py` cho điểm số **giống hệt** baseline ở cả
+     6 mẫu (không regression, không cải thiện đo được trên bộ mẫu hiện tại
+     — bug này hiếm khi trùng điều kiện kích hoạt với B2, nhưng vẫn là 1
+     lỗi thật cần fix để không lặp lại ở dữ liệu khác).
+
 **Lưu ý về môi trường:** file `input.pdf` fallback tự sinh (dùng khi một
 mẫu chỉ có `original.docx`) được cache xuống đĩa ngay lần dùng đầu, vì việc
 render docx→pdf của LibreOffice có độ rung (jitter) trong cách dàn trang
@@ -230,35 +246,51 @@ toàn bộ tham chiếu chéo đã có trong tài liệu này.
   và/hoặc giới hạn theo font/cỡ chữ của dòng đơn độc khớp với ngữ cảnh
   đang mở (bảng hoặc list item), verify từng bước với toàn bộ tập mẫu.
 
-### B2. Cặp nhãn:giá trị (label:value) bị dựng thành bảng giả — giờ xác nhận có **mất/trùng dữ liệu thật**, không chỉ sai định dạng (trước đây là #2)
+### B2. Cặp nhãn:giá trị (label:value) bị dựng thành bảng giả (trước đây là #2)
 
-- **Thấy ở 3/6 mẫu, mức độ tăng dần:**
-  - `vi/unicode/mixed`: nguồn có 2 cặp label giống hệt nhau về cấu trúc
-    ("Người"/"Người kiểm định" và "Ngày"/"Ngày thực hiện", mỗi cặp 1 `<w:p>`
-    với `<w:br/>` mềm ở giữa) — chỉ **1 trong 2** cặp bị tách thành bảng giả
-    1 hàng × 2 cột (`"Ngày"`), cặp còn lại giữ nguyên là đoạn văn bình
-    thường. Cho thấy điều kiện kích hoạt bug này là một ngưỡng biên, không
-    phải quy tắc cứng — xác nhận qua XML `python-docx`.
-  - `vi/unicode/time-new-roman`: `"Ngày lập: Date"` → bảng, và ô giá trị
-    còn chứa **một `<w:tbl>` lồng bên trong `<w:tc>`** (bảng trong ô bảng)
-    để tô nền xám cho "Date". `eval/run_eval.py` không đệ quy vào bảng
-    lồng khi trích text nên "Date" biến mất khỏi diff (`+Ngày lập: |`
-    trống sau dấu `|`) — đây là điểm mù của công cụ eval (chữ vẫn tồn tại
-    thật trong output.docx), nhưng cấu trúc bảng-lồng-trong-bảng tự nó là
-    một bug cấu trúc thật, nghiêm trọng hơn mô tả cũ.
-  - `vietnamese_doc`: `"Ngày tạo tài liệu kiểm thử: Date"` /
-    `"Người thực hiện kiểm tra: Person"` (1 đoạn văn, `<w:br/>` mềm ở giữa)
-    → bảng 2 hàng × 3 cột thật: `row0 = ['Ngày tạo tài liệu kiểm thử: ', '',
-    '​']`, `row1 = ['Người thực hiện kiểm tra: ', 'Person', 'Person']`
-    — **"Date" biến mất hoàn toàn** (thay bằng ô rỗng + zero-width space
-    còn sót), **"Person" bị nhân đôi** ra 2 ô. Đây là mất/trùng dữ liệu
-    thật, không chỉ một hàng bảng thừa vô hại. Ảnh render cho thấy có icon
-    nhỏ (avatar/placeholder) nằm sát giá trị ở vị trí này — nghi vấn (chưa
-    xác nhận) là icon đè lên bbox của giá trị làm logic tách cột bị nhầm.
-- **Chưa root-cause đầy đủ**, nhưng bằng chứng đủ mạnh để nâng ưu tiên fix
-  bug này lên cao hơn xếp hạng trước đây (từng bị coi là "chỉ mang tính
-  thiết kế, ưu tiên thấp") — vì giờ đã xác nhận có mất dữ liệu thật, không
-  chỉ sai định dạng trình bày.
+- **Cập nhật (2026-07-24):** phần root-cause "mất/trùng dữ liệu thật" ghi
+  trước đây bị **overstate**, do công cụ chẩn đoán (dump `cell.text` /
+  `row.cells` qua `python-docx`, và `extract_text_lines()` của eval) không
+  đệ quy vào `<w:tbl>` lồng trong `<w:tc>` và không khử trùng lặp khi một ô
+  bị `gridSpan`. Sau khi trích lại bằng script đệ quy + khử trùng
+  `gridSpan` (`full_text.py`, xem scratchpad), thực tế là:
+  - `vietnamese_doc` và `vi/unicode/time-new-roman`: **"Date" không hề mất**
+    — nó nằm trong một `<w:tbl>` 1×1 lồng bên trong `<w:tc>`, dùng để tô
+    nền xám (`<w:shd>`) làm nổi bật giá trị. `cell.text`/`extract_text_lines()`
+    không đệ quy vào bảng lồng nên "Date" biến mất khỏi *diff*, nhưng vẫn
+    tồn tại thật trong `output.docx` — đây là điểm mù của công cụ eval, không
+    phải mất dữ liệu. `pdf2docx/table/TablesConstructor.py: stream_tables()`
+    có hẳn 1 guard chủ ý giữ lại bảng lồng 1×1 khi ô có `bg_color`:
+    `if isinstance(self._parent, Cell) and table.num_cols*table.num_rows==1
+    and table[0][0].bg_color is None: continue`.
+  - `vietnamese_doc`: **"Person" không hề bị nhân đôi** — chỉ có **một**
+    `<w:tc>` chứa "Person" với `<w:gridSpan w:val="2"/>`; `row.cells` của
+    `python-docx` trả về cùng một Cell object lặp lại 1 lần cho mỗi vị trí
+    cột gộp, đó là đặc điểm API của `python-docx`, không phải bằng chứng
+    trùng lặp thật trong OOXML (đã xác nhận qua raw XML).
+  - `vi/unicode/mixed`: đây **không phải** cặp label:value có dấu hai chấm
+    như 2 mẫu trên. Thực tế "Ngày" (mảnh label ngắn) bị tách ra thành 1
+    bảng giả 1×1 độc lập (do `contained_in_shadings()`), còn "Ngày thực
+    hiện" (label đầy đủ hơn — theo `original.docx` gốc, đáng lẽ nằm chung
+    1 đoạn văn với "Ngày" qua 1 `<w:br/>` mềm) bị bỏ lại thành 1 `<w:p>`
+    riêng biệt (có ZWSP ở đầu). Đây **là bug thật** (không mất dữ liệu,
+    chỉ vỡ cấu trúc đoạn văn — mức độ thấp hơn mô tả cũ), vẫn **chưa fix**.
+- **Đã fix một phần** (xem "Đã fix" #8): `collect_stream_lines()`
+  (`pdf2docx/layout/Blocks.py`) có 1 vòng lặp riêng, không điều kiện,
+  append thêm mọi block thoả `contained_in_shadings()` — kể cả khi block
+  đó *đã* được thêm vào `table_lines` ở nhánh else phía trên (khi hàng
+  không phải flow-layout/list-item). Điều này khiến 1 Line bị thêm **2
+  lần** vào cùng 1 hàng bảng giả, tạo ra ô trùng lặp. Đã thêm guard
+  `added` set để bỏ qua block đã append. Fix này *đúng và an toàn* (verify
+  bằng `eval/run_eval.py`: điểm số giữ nguyên, không regressions) nhưng
+  **không tự nó giải quyết** vấn đề "Ngày"/"Ngày thực hiện" bị tách rời ở
+  `vi/unicode/mixed` — nguyên nhân của cái đó nằm ở chính
+  `contained_in_shadings()` gộp nhầm 1 mảnh label vào bảng giả, chưa fix.
+- **Còn lại cần fix:** tách rời "Ngày" khỏi "Ngày thực hiện" ở
+  `vi/unicode/mixed` — sửa điều kiện kích hoạt `contained_in_shadings()`
+  để không tách 1 mảnh label ra khỏi phần còn lại của cùng 1 đoạn văn.
+  Rủi ro regression tương tự B1 (đã thử 1 lần và revert, xem B1) — cần
+  cẩn trọng, chưa có hướng fix an toàn được xác nhận.
 
 ### B4. Không nhất quán khi tách/gộp đoạn văn tại ranh giới dòng bị wrap (gộp 4 biến thể, trước đây là #3(a)/(b)/(c) + biến thể mới (d))
 
@@ -372,23 +404,27 @@ toàn bộ tham chiếu chéo đã có trong tài liệu này.
 Xếp hạng lại theo bằng chứng thu thập được hôm nay (mức ảnh hưởng quan sát
 được + độ rõ ràng của giả thuyết root cause, không chỉ theo `text_sim`).
 B3 (chèn `<w:tab/>` thừa) đã fix — xem mục "Đã fix" #7, không còn trong
-danh sách này:
+danh sách này. B2 đã hạ ưu tiên sau khi xác minh lại: **không có mất dữ
+liệu thật** ("Date"/"Person" đều nguyên vẹn, chỉ là điểm mù công cụ diff),
+phần duplicate-append đã fix (mục "Đã fix" #8); phần còn lại (tách rời
+"Ngày"/"Ngày thực hiện" ở `vi/unicode/mixed`) là bug thật nhưng mức độ
+thấp (vỡ cấu trúc đoạn văn, không mất nội dung):
 
-1. **B2 (label:value → bảng giả, có mất dữ liệu thật)** — ưu tiên tăng lên
-   so với trước (từng bị coi là ưu tiên thấp/mang tính thiết kế); giờ đã
-   xác nhận có mất/trùng dữ liệu thật ("Date" biến mất, "Person" nhân đôi
-   ở vietnamese_doc), không chỉ sai định dạng trình bày.
-2. **B1 (dòng tiếp nối rơi khỏi bảng/list)** — bug gây thiệt hại nặng nhất
+1. **B1 (dòng tiếp nối rơi khỏi bảng/list)** — bug gây thiệt hại nặng nhất
    ở từng mẫu bị ảnh hưởng (dominant cause của 31 dòng changed ở
    time-new-roman, vỡ bảng nhìn thấy rõ ở vietnamese_doc, dọn luôn được #7
    cũ) nhưng rủi ro hơn: fix duy nhất đã thử từng gây regression lan rộng.
    Cần tín hiệu phát hiện chính xác hơn (thẳng cột + tỷ lệ khoảng-cách-dọc/
    chiều-cao-dòng, giới hạn theo font/cỡ chữ khớp ngữ cảnh) trước khi thử
    lại, verify từng bước với toàn bộ tập mẫu.
-3. **B4(a)/(d)** — bug thật, nhìn thấy được ở (a), chưa thấy ảnh hưởng
+2. **B4(a)/(d)** — bug thật, nhìn thấy được ở (a), chưa thấy ảnh hưởng
    hình ảnh ở (d) nhưng sai về cấu trúc; chưa có ai thử fix. B4(c) đã có
    fix (bị revert) — nên root-cause B6 trước khi thử lại B4(c)/mục "Đã thử
    và revert" #3. B4(b) ưu tiên thấp (vô hình, chỉ mang tính cấu trúc).
+3. **B2 còn lại ("Ngày"/"Ngày thực hiện" tách rời ở `vi/unicode/mixed`)**
+   — không mất dữ liệu, chỉ vỡ cấu trúc đoạn văn; rủi ro fix tương tự B1
+   (điều kiện kích hoạt cùng nằm ở logic phát hiện bảng-giả/shading), nên
+   xử lý sau khi có tín hiệu phát hiện chắc chắn hơn từ việc giải quyết B1.
 4. **B5 (cột rỗng bị xóa)** — chỉ mới thấy ở 1/6 mẫu (en/unicode), ưu tiên
    thấp cho đến khi thấy lặp lại ở mẫu khác.
 5. **B6** — nên root-cause song song hoặc trước khi thử lại fix margin của
@@ -397,5 +433,6 @@ danh sách này:
 
 Ngoài ra: cập nhật `vi/unicode/time-new-roman/original.docx` cho khớp
 `input.pdf` (xem mục "Không phải bug pdf2docx") để mẫu này đo B1 chính xác
-hơn, và cân nhắc sửa `extract_text_lines()` để đệ quy vào bảng lồng
-(giúp B2 không bị đánh giá thấp bởi chính công cụ eval).
+hơn, và cân nhắc sửa `extract_text_lines()` để đệ quy vào bảng lồng và khử
+trùng `gridSpan` (giúp eval không tiếp tục đánh giá sai các trường hợp
+kiểu B2 là mất/trùng dữ liệu).
