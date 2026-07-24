@@ -40,15 +40,25 @@ giải mà chính script eval in ra để biết định nghĩa chính xác):
   các từ giống hệt nhau. Vẫn giữ lại vì hữu ích để phát hiện khác biệt về
   *cấu trúc*, nhưng không phải chỉ số chính để tối ưu.
 
+**Cập nhật (2026-07-24, sau khi fix B3):** bảng dưới đây là số liệu mới nhất
+sau khi fix bug B3 (chèn `<w:tab/>` thừa, xem mục "Đã fix" #7). Số liệu gốc
+trước khi bắt đầu xử lý bug (dùng làm baseline cho toàn bộ phần phân tích
+bug bên dưới) là: en/unicode 0.4933/0.9988/0.2857/35; vi/unicode/arial
+0.8655/1.0000/0.6250/6; vi/unicode/calibri 0.7917/1.0000/0.8261/8;
+vi/unicode/mixed 0.8187/0.9976/0.8814/7; vi/unicode/time-new-roman
+0.8205/0.9622/0.5753/31; vietnamese_doc 0.8011/0.9342/0.6415/19; TỔNG
+0.7651/0.9821/0.6392 (số trang không đổi qua các lần chạy, không lặp lại ở
+đây).
+
 | mẫu                          | ssim   | text_sim | text_sim_strict | changed | số trang (gốc/ra) |
 |------------------------------|--------|----------|------------------|---------|-------------------|
-| en/unicode                   | 0.4933 | 0.9988   | 0.2857           | 35      | 2 / 3             |
+| en/unicode                   | 0.4933 | 0.9988   | 0.5714           | 21      | 2 / 3             |
 | vi/unicode/arial              | 0.8655 | 1.0000   | 0.6250           | 6       | 2 / 2             |
-| vi/unicode/calibri            | 0.7917 | 1.0000   | 0.8261           | 8       | 2 / 2             |
-| vi/unicode/mixed              | 0.8187 | 0.9976   | 0.8814           | 7       | 3 / 3             |
-| vi/unicode/time-new-roman     | 0.8205 | 0.9622   | 0.5753           | 31      | 3 / 3             |
-| vietnamese_doc                | 0.8011 | 0.9342   | 0.6415           | 19      | 2 / 2             |
-| **TỔNG**                      | **0.7651** | **0.9821** | **0.6392**   |     |                   |
+| vi/unicode/calibri            | 0.7917 | 1.0000   | 0.8696           | 6       | 2 / 2             |
+| vi/unicode/mixed              | 0.8187 | 0.9976   | 0.9153           | 5       | 3 / 3             |
+| vi/unicode/time-new-roman     | 0.8197 | 0.9622   | 0.6849           | 23      | 3 / 3             |
+| vietnamese_doc                | 0.8007 | 0.9342   | 0.6792           | 17      | 2 / 2             |
+| **TỔNG**                      | **0.7649** | **0.9821** | **0.7242**   |     |                   |
 
 **Ghi chú:** `policy_claude_draft` (từng có mặt trong các lần chạy trước
 khi bị xóa) đã bị **xóa khỏi `eval/samples/`** vì là một tài liệu nội bộ
@@ -98,6 +108,36 @@ eval tự động.
    - **Xác nhận vẫn còn đúng ở lần rà soát này**: không có glyph bullet trần
      nào rò rỉ ra `text_diff.txt` của bất kỳ mẫu nào trong 6 mẫu hiện tại.
 
+7. **Chèn `<w:tab/>` thừa giữa câu/giữa từ tại các ranh giới dòng bị wrap**
+   (trước đây là B3 trong lần rà soát 2026-07-24) — thấy ở 5/6 mẫu: `en/unicode`
+   (`"...service \tinstances."`), `vi/unicode/mixed` (`"...thời gian \tthực."`),
+   `vi/unicode/time-new-roman` (`"...đến \t4096 bit."`), `vi/unicode/calibri`
+   (giữa một từ: `"...ỷ\t ỹ"`), `vietnamese_doc` (`"...phức \t\ttạp."`,
+   `"Gán cho: \tPerson"`). Root cause + fix, cả hai trong
+   `pdf2docx/text/Lines.py: Lines.parse_tab_stop()`:
+   - **(1) Bug nền:** hàm này tính tab-stop cho *mọi* block, kể cả những
+     block không có dòng nào thật sự nằm cùng hàng (`in_same_row()`) với
+     dòng khác — nghĩa là mọi chênh lệch x0 trong block chỉ là cấu trúc đoạn
+     văn bình thường (vd. marker bullet bắt đầu xa lề trái hơn dòng tiếp nối
+     của chính nó). Fix: bỏ qua toàn bộ tính tab-stop nếu không có cặp dòng
+     nào `in_same_row()` với nhau trong block.
+   - **(2) Bug còn sót lại sau (1):** với block *có* một cặp marker+nội dung
+     thật sự cùng hàng (vd. `●` là một `Line` riêng, cùng hàng với dòng nội
+     dung theo sau — tab ở đây là đúng, cần giữ), biến tham chiếu `ref` vẫn
+     bị reset về mép trái tuyệt đối của cả block mỗi khi dòng hiện tại
+     không `in_same_row()` với dòng kế tiếp — khiến dòng tiếp nối tự nhiên
+     của nội dung (vốn có x0 trùng với dòng nội dung nó tiếp nối, không phải
+     mép trái block) bị coi nhầm là một cột tab mới. Fix: khi thoát khỏi một
+     cặp cùng-hàng, reset `ref` về x0 của chính dòng vừa xử lý xong, không
+     phải mép trái tuyệt đối của block.
+   - **Verify:** chạy lại `eval/run_eval.py` sau mỗi phần fix — `text_sim`
+     và `ssim`/số trang không đổi ở bất kỳ mẫu nào (chênh lệch ssim
+     ±0.0002-0.0008 chỉ là nhiễu render LibreOffice đã biết), `text_sim_strict`
+     cải thiện rõ ở mọi mẫu bị ảnh hưởng (xem bảng điểm số ở đầu file để biết
+     số liệu chi tiết trước/sau). Xác nhận hết hoàn toàn bằng
+     `grep -rn '\t' eval/results/*/text_diff*.txt eval/results/*/*/text_diff*.txt`
+     — không còn dòng `+`/`-` nào chứa tab trong toàn bộ 6 mẫu.
+
 **Lưu ý về môi trường:** file `input.pdf` fallback tự sinh (dùng khi một
 mẫu chỉ có `original.docx`) được cache xuống đĩa ngay lần dùng đầu, vì việc
 render docx→pdf của LibreOffice có độ rung (jitter) trong cách dàn trang
@@ -137,6 +177,10 @@ của LibreOffice "lạnh" có thể làm sai lệch cách phân trang lần đ�
      một khi margin được tính đúng.
 
 ## Bug trong pdf2docx (thật, đáng để fix — đánh số lại theo mức ảnh hưởng quan sát được hôm nay)
+
+**Ghi chú:** B3 (chèn `<w:tab/>` thừa) đã được fix — xem mục "Đã fix" #7.
+Số thứ tự B1, B2, B4, B5, B6 giữ nguyên (không dồn lại) để khỏi phải sửa lại
+toàn bộ tham chiếu chéo đã có trong tài liệu này.
 
 ### B1. Dòng tiếp nối của một khối bị wrap (hàng bảng, list item, đoạn văn) rơi hẳn ra khỏi khối cha — bug cấu trúc nghiêm trọng nhất hiện tại (trước đây là #6 + #7)
 
@@ -215,35 +259,6 @@ của LibreOffice "lạnh" có thể làm sai lệch cách phân trang lần đ�
   bug này lên cao hơn xếp hạng trước đây (từng bị coi là "chỉ mang tính
   thiết kế, ưu tiên thấp") — vì giờ đã xác nhận có mất dữ liệu thật, không
   chỉ sai định dạng trình bày.
-
-### B3. Chèn `<w:tab/>` thừa giữa câu/giữa từ tại các ranh giới dòng bị wrap — bug mới, chưa từng ghi nhận, xuất hiện ở 5/6 mẫu
-
-- **Thấy ở:** `en/unicode` (list item: `"...service \tinstances."`),
-  `vi/unicode/mixed` (câu thường: `"...thời gian \tthực."`),
-  `vi/unicode/time-new-roman` (bullet item:
-  `"...đến \t4096 bit."`), `vi/unicode/calibri` (**giữa một từ**:
-  `"...ỷ\t ỹ"`, tách đôi một từ tiếng Việt), `vietnamese_doc` (câu thường,
-  2 tab liên tiếp: `"...phức \t\ttạp."`, và trong ô bảng:
-  `"Gán cho: \tPerson"`).
-- **Root cause giả thuyết** (đọc `pdf2docx/text/Lines.py`, hàm
-  `parse_tab_stop()`, ~dòng 241-282): khi một dòng tiếp nối không
-  `in_same_row()` với dòng trước, biến tham chiếu `ref` được reset về mép
-  trái của cả block (vd. vị trí glyph bullet) thay vì vị trí bắt đầu nội
-  dung thật (hanging indent) — khiến x0 thật của dòng tiếp nối trông như
-  một khoảng thụt lề giả rất lớn so với `ref`, kích hoạt chèn tab-stop tại
-  đúng điểm wrap dòng bình thường, nơi lẽ ra không cần tab nào cả. Cùng một
-  cơ chế xảy ra dù dòng tiếp nối đó cuối cùng ở trong list item, câu văn
-  thường, hay ô bảng — giải thích vì sao nó xuất hiện rộng khắp như vậy.
-- **Mức độ hiển thị trong diff/điểm số không nhất quán**: một số trường hợp
-  hiện ra như dòng `+`/`-` thật trong `text_diff.txt` (ảnh hưởng
-  `text_sim_strict`), một số bị `extract_text_lines()`'s `.strip()` (chỉ
-  strip đầu/cuối chuỗi) che khuất khi tab nằm ngay đầu chuỗi — cần kiểm tra
-  lại độ phủ chính xác của từng trường hợp khi bắt tay fix, đừng chỉ dựa
-  vào một mẫu.
-- Đây là bug rộng nhất về số mẫu bị ảnh hưởng (5/6) trong toàn bộ danh sách
-  hiện tại — ứng viên tốt cho fix tiếp theo nếu muốn tối đa hoá số mẫu
-  được cải thiện cùng lúc, và giả thuyết root cause đã khá cụ thể (khác
-  với B1, nơi một lần thử fix trước đã gây regression lan rộng).
 
 ### B4. Không nhất quán khi tách/gộp đoạn văn tại ranh giới dòng bị wrap (gộp 4 biến thể, trước đây là #3(a)/(b)/(c) + biến thể mới (d))
 
@@ -355,31 +370,28 @@ của LibreOffice "lạnh" có thể làm sai lệch cách phân trang lần đ�
 ## Đề xuất bước tiếp theo (chưa bắt đầu — triage/ưu tiên sau)
 
 Xếp hạng lại theo bằng chứng thu thập được hôm nay (mức ảnh hưởng quan sát
-được + độ rõ ràng của giả thuyết root cause, không chỉ theo `text_sim`):
+được + độ rõ ràng của giả thuyết root cause, không chỉ theo `text_sim`).
+B3 (chèn `<w:tab/>` thừa) đã fix — xem mục "Đã fix" #7, không còn trong
+danh sách này:
 
-1. **B3 (chèn `<w:tab/>` thừa)** — ứng viên tốt nhất để làm tiếp theo: xuất
-   hiện ở 5/6 mẫu (phổ biến nhất trong toàn bộ danh sách), và giả thuyết
-   root cause đã khá cụ thể (`ref` reset sai trong `parse_tab_stop()` khi
-   dòng tiếp nối không `in_same_row()`) — khác với B1, nơi lần thử fix
-   trước đã gây regression lan rộng vì tín hiệu phát hiện còn thô.
-2. **B2 (label:value → bảng giả, có mất dữ liệu thật)** — ưu tiên tăng lên
+1. **B2 (label:value → bảng giả, có mất dữ liệu thật)** — ưu tiên tăng lên
    so với trước (từng bị coi là ưu tiên thấp/mang tính thiết kế); giờ đã
    xác nhận có mất/trùng dữ liệu thật ("Date" biến mất, "Person" nhân đôi
    ở vietnamese_doc), không chỉ sai định dạng trình bày.
-3. **B1 (dòng tiếp nối rơi khỏi bảng/list)** — bug gây thiệt hại nặng nhất
+2. **B1 (dòng tiếp nối rơi khỏi bảng/list)** — bug gây thiệt hại nặng nhất
    ở từng mẫu bị ảnh hưởng (dominant cause của 31 dòng changed ở
    time-new-roman, vỡ bảng nhìn thấy rõ ở vietnamese_doc, dọn luôn được #7
    cũ) nhưng rủi ro hơn: fix duy nhất đã thử từng gây regression lan rộng.
    Cần tín hiệu phát hiện chính xác hơn (thẳng cột + tỷ lệ khoảng-cách-dọc/
    chiều-cao-dòng, giới hạn theo font/cỡ chữ khớp ngữ cảnh) trước khi thử
    lại, verify từng bước với toàn bộ tập mẫu.
-4. **B4(a)/(d)** — bug thật, nhìn thấy được ở (a), chưa thấy ảnh hưởng
+3. **B4(a)/(d)** — bug thật, nhìn thấy được ở (a), chưa thấy ảnh hưởng
    hình ảnh ở (d) nhưng sai về cấu trúc; chưa có ai thử fix. B4(c) đã có
    fix (bị revert) — nên root-cause B6 trước khi thử lại B4(c)/mục "Đã thử
    và revert" #3. B4(b) ưu tiên thấp (vô hình, chỉ mang tính cấu trúc).
-5. **B5 (cột rỗng bị xóa)** — chỉ mới thấy ở 1/6 mẫu (en/unicode), ưu tiên
+4. **B5 (cột rỗng bị xóa)** — chỉ mới thấy ở 1/6 mẫu (en/unicode), ưu tiên
    thấp cho đến khi thấy lặp lại ở mẫu khác.
-6. **B6** — nên root-cause song song hoặc trước khi thử lại fix margin của
+5. **B6** — nên root-cause song song hoặc trước khi thử lại fix margin của
    mục "Đã thử và revert" #3, để fix đó land mà không đánh đổi ssim/số
    trang.
 

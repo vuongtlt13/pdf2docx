@@ -244,10 +244,24 @@ class Lines(ElementCollection):
         Args:
             line_separate_threshold (float): Don't need a tab stop if the line gap less than this value.
         '''
+        block = self.parent
+        idx0, idx1 = (0, 2) if block.is_horizontal_text else (3, 1)
+
+        # Tab stops only matter when lines genuinely sit side by side on the
+        # same physical row (e.g. dotted leaders, label/value columns laid
+        # out with real tabs in the PDF). Otherwise every x0 difference
+        # across lines is just ordinary paragraph structure -- e.g. a
+        # bullet/number marker's line starting further left than its own
+        # wrapped continuation -- and forcing a TAB there corrupts the
+        # wrapped text instead of reproducing real column alignment
+        # (see eval/ISSUES.md bug B3).
+        if not any(line.in_same_row(self._instances[i+1])
+                for i, line in enumerate(self._instances[:-1])):
+            block.tab_stops = []
+            return
+
         # set all tab stop positions for parent block
         # Note these values are relative to the left boundary of parent block
-        block = self.parent        
-        idx0, idx1 = (0, 2) if block.is_horizontal_text else (3, 1)
         fun = lambda line: round(abs(line.bbox[idx0]-block.bbox[idx0]), 1)
         all_pos = set(map(fun, self._instances))
         tab_stops = list(filter(lambda pos: pos>=constants.MINOR_DIST, all_pos))
@@ -278,4 +292,9 @@ class Lines(ElementCollection):
 
             # update stop reference position
             if line==self._instances[-1]: break
-            ref = line.bbox[idx1] if line.in_same_row(self._instances[i+1]) else block.bbox[idx0]
+            # Once a same-row (multi-column) pair ends, the next line's
+            # natural reference is wherever *this* line started -- not the
+            # block's overall left edge -- so a plain wrapped continuation
+            # line (which lands back at this line's own x0) isn't mistaken
+            # for a fresh tab-indented column (bug B3).
+            ref = line.bbox[idx1] if line.in_same_row(self._instances[i+1]) else line.bbox[idx0]
