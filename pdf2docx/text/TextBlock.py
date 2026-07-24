@@ -25,15 +25,28 @@ Data structure based on this `link <https://pymupdf.readthedocs.io/en/latest/tex
     }
 '''
 
+import re
 from docx.shared import (Pt,Inches)
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from .Lines import Lines
+from .TextSpan import TextSpan
 from ..image.ImageSpan import ImageSpan
 from ..common.share import (RectType, TextAlignment, lower_round)
 from ..common.Block import Block
 from ..common.share import (rgb_component_from_name, lower_round)
 from ..common import constants
 from ..common import docx
+
+
+# bullet glyphs pdf2docx currently inlines as literal text instead of
+# reconstructing a real Word list -- see eval/ISSUES.md bug #1/#4.
+# codepoints from https://en.wikipedia.org/wiki/Bullet_(typography)
+_BULLET_MARKERS = {
+    '•': 0, '●': 0, '▪': 0, # bullet, black circle, black square
+    '○': 1, '◦': 1,              # white circle, white bullet
+    '‣': 2, '◉': 2,              # triangular bullet, fisheye
+}
+_NUMBERED_MARKER_RE = re.compile(r'^\(?\d{1,3}[.\)]$')
 
 
 class TextBlock(Block):
@@ -285,19 +298,94 @@ class TextBlock(Block):
             self.before_space = 0.0
 
 
-    def make_docx(self, p):
-        '''Create paragraph for a text block.
+    def _flatten_spans(self):
+        '''Yield ``(line, span)`` for every TextSpan in this block, across all
+        lines, in document order. A list-item boundary can fall in the
+        middle of a ``Line`` (e.g. two bullet items packed into a single
+        physical PDF line with no line-break between them), so list-marker
+        detection/splitting operates on this flat span sequence rather than
+        per-line.
+        '''
+        for line in self.lines:
+            for span in line.spans:
+                if isinstance(span, TextSpan): yield line, span
 
-        Refer to ``python-docx`` doc for details on text format:
 
-        * https://python-docx.readthedocs.io/en/latest/user/text.html
-        * https://python-docx.readthedocs.io/en/latest/api/enum/WdAlignParagraph.html#wdparagraphalignment
-        
-        Args:
-            p (Paragraph): ``python-docx`` paragraph instance.
+    @staticmethod
+    def _span_style(span):
+        '''A span's own visual style, coarse enough to compare marker vs.
+        content spans robustly: font *name* alone isn't reliable since some
+        PDFs leave it blank for both (see eval/ISSUES.md bug #1/#4 notes).
+        '''
+        return (span.font, round(span.size, 1), span.color, span.flags)
 
-        .. note::
-            The left position of paragraph is set by paragraph indent, rather than ``TAB`` stop.
+
+    def _detect_markers(self, flat):
+        '''Find spans in `flat` that look like a list marker glyph (bullet or
+        ``"1."``-style number) rendered in a visibly different style from the
+        span right after it -- a strong signal it's a marker glyph inlined by
+        the PDF producer, not part of the sentence.
+
+        Returns:
+            dict: ``id(span) -> (kind, level)`` for every detected marker
+                span, where kind is 'bullet' or 'number'.
+        '''
+        n = len(flat)
+        markers = {}
+        for idx, (_, span) in enumerate(flat):
+            text = span.text.replace('​', '').strip()
+            if not text: continue
+
+            if text in _BULLET_MARKERS:
+                kind = ('bullet', _BULLET_MARKERS[text])
+            elif _NUMBERED_MARKER_RE.match(text):
+                kind = ('number', 0)
+            else:
+                continue
+
+            # prefer the following span for the style-contrast check (the
+            # marker's own content); fall back to the preceding one if the
+            # marker is the very last span in the block
+            neighbor = flat[idx+1][1] if idx+1<n else (flat[idx-1][1] if idx>0 else None)
+            if neighbor is None or self._span_style(span)==self._span_style(neighbor): continue
+
+            markers[id(span)] = kind
+        return markers
+
+
+    def _group_list_items(self):
+        '''Split this block's spans into groups at each detected list-marker
+        span, so every list item can be rendered as its own real docx
+        paragraph, while runs of plain (non-list) content stay grouped
+        exactly as before.
+
+        Returns:
+            list[tuple]: ``(marker, items)`` per group, where `items` is a
+                list of ``(line, span)`` and `marker` is the group's
+                ``_detect_markers()`` result (None for a plain-content group).
+        '''
+        flat = list(self._flatten_spans())
+        if not flat: return [(None, [])]
+
+        markers = self._detect_markers(flat)
+        groups = []
+        current, marker = [], None
+        for item in flat:
+            _, span = item
+            if id(span) in markers:
+                if current: groups.append((marker, current))
+                current, marker = [item], markers[id(span)]
+            else:
+                current.append(item)
+        if current: groups.append((marker, current))
+        return groups
+
+
+    def _set_paragraph_format(self, p):
+        '''Set paragraph vertical/horizontal spacing and alignment -- the
+        format shared by this block's own paragraph and, when this block
+        turns out to contain list items, every extra paragraph split off
+        from it (see ``_group_list_items``).
         '''
         pf = docx.reset_paragraph_format(p)
 
@@ -307,7 +395,7 @@ class TextBlock(Block):
         before_spacing = max(round(self.before_space, 1), 0.0)
         after_spacing = max(round(self.after_space, 1), 0.0)
         pf.space_before = Pt(before_spacing)
-        pf.space_after = Pt(after_spacing)        
+        pf.space_after = Pt(after_spacing)
 
         # line spacing
         if self.line_space_type==0: # exact line spacing
@@ -320,30 +408,30 @@ class TextBlock(Block):
         # ------------------------------------
         # (1) set paragraph indentation
         # NOTE: different left spacing setting in case first line indent and hanging
-        left_space  = self.left_space        
+        left_space  = self.left_space
         if self.first_line_space<0: # in case hanging
-            left_space -= self.first_line_space           
-        
+            left_space -= self.first_line_space
+
         pf.left_indent  = Pt(left_space)
         pf.right_indent  = Pt(self.right_space)
         pf.first_line_indent = Pt(self.first_line_space)
 
         # (2) set alignment mode and adjust indentation:
-        # round indention on the opposite side to lower bound (inches), so it saves more space to 
+        # round indention on the opposite side to lower bound (inches), so it saves more space to
         # avoid unexpected line break
         if self.alignment==TextAlignment.LEFT:
-            pf.alignment = WD_ALIGN_PARAGRAPH.LEFT            
+            pf.alignment = WD_ALIGN_PARAGRAPH.LEFT
             # set tab stops to ensure line position
             for pos in self.tab_stops:
                 pf.tab_stops.add_tab_stop(Pt(self.left_space + pos))
-            
+
             # adjust right indent
             d = lower_round(self.right_space/constants.ITP, 1)
             pf.right_indent = Inches(d)
 
         elif self.alignment==TextAlignment.RIGHT:
             pf.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            
+
             # adjust left indent
             d = lower_round(left_space/constants.ITP, 1)
             pf.left_indent = Inches(d)
@@ -360,10 +448,79 @@ class TextBlock(Block):
         else:
             pf.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
-        # ------------------------------------
-        # add lines
-        # ------------------------------------
-        for line in self.lines: line.make_docx(p)
+        return pf
+
+
+    def _render_group(self, p, marker, items):
+        '''Render one group of ``(line, span)`` items -- a list item's own
+        content, or a run of plain (non-list) content -- into paragraph `p`.
+
+        Reproduces ``Line.make_docx``'s per-line tab-stop/line-break
+        behavior for any real line-to-line transition *within* the group,
+        while a group boundary itself never emits one (it's now a genuine
+        new paragraph, so no extra blank line is needed there).
+        '''
+        if marker is not None:
+            docx.apply_list_style(p, marker[0], marker[1])
+            items = items[1:] # drop the marker span itself
+
+        prev_line = None
+        for line, span in items:
+            if line is not prev_line:
+                if prev_line is not None and prev_line.line_break:
+                    p.add_run('\n')
+                if line.tab_stop:
+                    for _ in range(line.tab_stop): p.add_run().add_tab()
+                prev_line = line
+            span.make_docx(p)
+
+
+    def make_docx(self, p):
+        '''Create paragraph(s) for a text block.
+
+        Refer to ``python-docx`` doc for details on text format:
+
+        * https://python-docx.readthedocs.io/en/latest/user/text.html
+        * https://python-docx.readthedocs.io/en/latest/api/enum/WdAlignParagraph.html#wdparagraphalignment
+
+        Args:
+            p (Paragraph): ``python-docx`` paragraph instance.
+
+        .. note::
+            The left position of paragraph is set by paragraph indent, rather than ``TAB`` stop.
+
+        .. note::
+            A block containing one or more detected list items is split into
+            multiple paragraphs -- one per list item plus one per run of
+            plain lines -- since each must carry its own list numbering.
+            Extra paragraphs are inserted immediately before `p` (the last
+            group renders into `p` itself), so document order is preserved.
+        '''
+        self._set_paragraph_format(p)
+        groups = self._group_list_items()
+
+        # common case: no list marker detected, behave exactly as before
+        if len(groups)==1 and groups[0][0] is None:
+            for line in self.lines: line.make_docx(p)
+            return p
+
+        paragraphs = []
+        for i in range(len(groups)):
+            if i < len(groups)-1:
+                new_p = p.insert_paragraph_before()
+                self._set_paragraph_format(new_p)
+                paragraphs.append(new_p)
+            else:
+                paragraphs.append(p)
+
+        last_idx = len(groups)-1
+        for i, (target_p, (marker, items)) in enumerate(zip(paragraphs, groups)):
+            # the block's own before/after spacing was meant for the whole
+            # block, not repeated on every split-off paragraph
+            if i>0: target_p.paragraph_format.space_before = Pt(0)
+            if i<last_idx: target_p.paragraph_format.space_after = Pt(0)
+
+            self._render_group(target_p, marker, items)
 
         return p
 

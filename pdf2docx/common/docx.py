@@ -133,6 +133,28 @@ def set_hidden_property(p):
     p._p.append(rPr)
 
 
+_LIST_STYLE_NAMES = {
+    'bullet': ('List Bullet', 'List Bullet 2', 'List Bullet 3'),
+    'number': ('List Number', 'List Number 2', 'List Number 3'),
+}
+
+def apply_list_style(paragraph, kind:str, level:int=0):
+    '''Turn a paragraph into a real Word list item using the default template's
+    built-in ``List Bullet``/``List Number`` styles (which already carry a
+    ``<w:numPr>`` in their style definition), instead of leaving the marker
+    glyph as literal run text.
+
+    Args:
+        paragraph (Paragraph): target paragraph.
+        kind (str): 'bullet' or 'number'.
+        level (int, optional): nesting level, clamped to the styles available
+            in the default template (0-2). Defaults to 0.
+    '''
+    names = _LIST_STYLE_NAMES.get(kind)
+    if not names: return
+    paragraph.style = names[min(max(level, 0), len(names)-1)]
+
+
 # ---------------------------------------------------------
 # text properties
 # ---------------------------------------------------------
