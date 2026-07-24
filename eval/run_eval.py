@@ -89,7 +89,11 @@ def extract_text_lines(docx_path: Path) -> list[str]:
     return lines
 
 
-_LIST_MARKER_GLYPHS = {'•', '●', '▪', '○', '◦', '‣', '◉'}
+_LIST_MARKER_GLYPHS = {
+    '•', '●', '▪', '■', '♦', '▸', '★',
+    '○', '◦', '□', '▹', '☆',
+    '‣', '◉', '➤', '➢',
+}
 _LIST_MARKER_NUMBER_RE = re.compile(r'^\(?\d{1,3}[.\)]$')
 
 

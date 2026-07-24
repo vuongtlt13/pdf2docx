@@ -42,9 +42,9 @@ from ..common import docx
 # reconstructing a real Word list -- see eval/ISSUES.md bug #1/#4.
 # codepoints from https://en.wikipedia.org/wiki/Bullet_(typography)
 _BULLET_MARKERS = {
-    '•': 0, '●': 0, '▪': 0, # bullet, black circle, black square
-    '○': 1, '◦': 1,              # white circle, white bullet
-    '‣': 2, '◉': 2,              # triangular bullet, fisheye
+    '•': 0, '●': 0, '▪': 0, '■': 0, '♦': 0, '▸': 0, '★': 0, # filled: bullet, black circle, black/large square, diamond, small triangle, star
+    '○': 1, '◦': 1, '□': 1, '▹': 1, '☆': 1,                 # hollow: white circle, white bullet, white square, small triangle, star
+    '‣': 2, '◉': 2, '➤': 2, '➢': 2,                          # triangular bullet, fisheye, arrowheads
 }
 _NUMBERED_MARKER_RE = re.compile(r'^\(?\d{1,3}[.\)]$')
 

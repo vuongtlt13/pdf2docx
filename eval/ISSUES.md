@@ -8,17 +8,20 @@ tín hiệu phụ, mang tính chẩn đoán. Một fix làm cải thiện `text_
 dù có làm giảm `ssim`/số trang; một fix làm giảm `text_sim` là xấu dù có
 làm tăng `ssim`.
 
-Ảnh chụp nhanh từ lần chạy đầy đủ gần nhất (cả 7 mẫu), sau khi fix xong các
-bug #1, #2, và #4 (xem mục "Đã fix") — #4 dựng lại các marker bullet/số thứ
-tự thành list thật của Word, khép lại 2 mục #1 và #4 trong `Bugs in
-pdf2docx` (trùng số nhưng khác danh sách — xem ghi chú ở đầu mục đó). Fix
-về margin/ngắt section (trước đây là mục "Đã fix" số 3) đã **thử làm rồi
-revert** — xem mục "Đã thử và revert" bên dưới; không có thay đổi nào của
-nó còn tồn tại trong ảnh chụp này. Mục "Đã fix" số 5 (mới) xử lý một
-false-negative của fix #4: marker bullet không được phát hiện khi style
-của nó trùng hệt với span nội dung theo ngay sau, cộng với một cải tiến ở
-phía `run_eval.py` để `text_sim` không tính các token marker còn sót lại
-(nếu có) là mismatch thật.
+Ảnh chụp nhanh từ lần chạy đầy đủ gần nhất (6 mẫu — `policy_claude_draft`
+đã bị **xóa khỏi bộ mẫu** vì là tài liệu nội bộ bảo mật, xem ghi chú riêng
+bên dưới bảng), sau khi fix xong các bug #1, #2, và #4 (xem mục "Đã fix")
+— #4 dựng lại các marker bullet/số thứ tự thành list thật của Word, khép
+lại 2 mục #1 và #4 trong `Bugs in pdf2docx` (trùng số nhưng khác danh sách
+— xem ghi chú ở đầu mục đó). Fix về margin/ngắt section (trước đây là mục
+"Đã fix" số 3) đã **thử làm rồi revert** — xem mục "Đã thử và revert" bên
+dưới; không có thay đổi nào của nó còn tồn tại trong ảnh chụp này. Mục "Đã
+fix" số 5 xử lý một false-negative của fix #4: marker bullet không được
+phát hiện khi style của nó trùng hệt với span nội dung theo ngay sau, cộng
+với một cải tiến ở phía `run_eval.py` để `text_sim` không tính các token
+marker còn sót lại (nếu có) là mismatch thật. Mục "Đã fix" số 6 (mới) mở
+rộng danh sách glyph bullet được nhận diện — phát hiện khi điều tra vì sao
+`vietnamese_doc` có `text_sim` thấp nhất trong 6 mẫu.
 
 `run_eval.py` hiện báo cáo hai chỉ số về nội dung văn bản (xem phần chú
 giải mà chính script eval in ra để biết định nghĩa chính xác):
@@ -35,13 +38,22 @@ giải mà chính script eval in ra để biết định nghĩa chính xác):
 | mẫu                          | ssim   | text_sim | text_sim_strict | changed | số trang (gốc/ra) |
 |------------------------------|--------|----------|------------------|---------|-------------------|
 | en/unicode                   | 0.4933 | 0.9988   | 0.2857           | 35      | 2 / 3             |
-| policy_claude_draft           | 0.5838 | 0.8982   | 0.4559           | 74      | 5 / 7             |
 | vi/unicode/arial              | 0.8655 | 1.0000   | 0.6250           | 6       | 2 / 2             |
 | vi/unicode/calibri            | 0.7917 | 1.0000   | 0.8261           | 8       | 2 / 2             |
 | vi/unicode/mixed              | 0.8187 | 0.9976   | 0.8814           | 7       | 3 / 3             |
 | vi/unicode/time-new-roman     | 0.8205 | 0.9622   | 0.5753           | 31      | 3 / 3             |
-| vietnamese_doc                | 0.7996 | 0.9327   | 0.6038           | 21      | 2 / 2             |
-| **TỔNG**                      | **0.7390** | **0.9699** | **0.6076**   |     |                   |
+| vietnamese_doc                | 0.8011 | 0.9342   | 0.6415           | 19      | 2 / 2             |
+| **TỔNG**                      | **0.7651** | **0.9821** | **0.6392**   |     |                   |
+
+**Ghi chú:** `policy_claude_draft` (từng có mặt trong các lần chạy trước,
+ssim 0.5838 / text_sim 0.8982 / text_sim_strict 0.4559 / 74 changed / 5→7
+trang) đã bị **xóa khỏi `eval/samples/`** vì là một tài liệu nội bộ bảo
+mật — không được commit vào git. Các mục "Đã fix" bên dưới vẫn tham chiếu
+số liệu của nó vì đó là số liệu thật tại thời điểm fix được xác nhận, và
+các bug nó từng minh họa (đặc biệt #2 — nhãn/footer bị gộp thành hàng bảng
+giả) vẫn còn thật, chỉ là giờ không còn cách nào tái xác nhận qua eval tự
+động nữa; các mẫu còn lại (vi/unicode/time-new-roman, vi/unicode/mixed)
+vẫn minh họa được bug #2 nên nó chưa "mù" hoàn toàn.
 
 ## Đã fix
 
@@ -158,6 +170,33 @@ giải mà chính script eval in ra để biết định nghĩa chính xác):
      vào nội dung như hàng bảng giả) — đã xác nhận qua thử nghiệm riêng
      (chuẩn hoá thêm token marker rồi so lại) rằng phần chênh lệch còn sót
      lại chủ yếu là do bug #2, không phải marker leak.
+
+6. **Danh sách glyph bullet được nhận diện (`_BULLET_MARKERS` trong
+   `TextBlock.py`) thiếu nhiều glyph bullet phổ biến khác — cùng loại lỗi
+   với #1/#4, chỉ khác glyph cụ thể.**
+   - Phát hiện khi điều tra vì sao `vietnamese_doc` có `text_sim` thấp nhất
+     trong 6 mẫu (sau khi `policy_claude_draft` bị xóa khỏi bộ mẫu): marker
+     `■` (U+25A0 BLACK SQUARE) rò rỉ thành text thuần trước
+     `"Cấp độ 2: Phân tích yêu cầu và thiết kế UI/UX."` — whitelist cũ chỉ
+     có `▪` (U+25AA, ô vuông nhỏ hơn), không có `■` (ô vuông lớn), dù cả hai
+     đều là bullet hình vuông thông thường.
+   - **Fix:** mở rộng `_BULLET_MARKERS` (`pdf2docx/text/TextBlock.py:44-47`)
+     và `_LIST_MARKER_GLYPHS` (`eval/run_eval.py`, giữ đồng bộ hai bên như
+     đã làm ở fix #5) thêm một tập glyph bullet phổ biến khác, theo 3 mức
+     độ đậm/nhạt tương tự các glyph đã có:
+     - đậm (level 0, cùng nhóm `•`/`●`/`▪`): `■` (ô vuông lớn), `♦` (kim
+       cương), `▸` (tam giác nhỏ đặc), `★` (sao đặc)
+     - nhạt/hollow (level 1, cùng nhóm `○`/`◦`): `□` (ô vuông rỗng), `▹`
+       (tam giác nhỏ rỗng), `☆` (sao rỗng)
+     - mũi tên (level 2, cùng nhóm `‣`/`◉`): `➤`, `➢`
+     - Cố tình **không** thêm ký hiệu tick/check (`✓`, `✔`) hay dash (`–`)
+       vào danh sách — hai loại này rủi ro false-positive cao hơn nhiều vì
+       thường là nội dung thật (checkbox đã tick, dấu gạch nối trong câu),
+       không phải marker list.
+   - Đã xác nhận qua eval (cả 6 mẫu): `vietnamese_doc` `text_sim` 0.9327 →
+     0.9342, `text_sim_strict` 0.6038 → 0.6415, `changed` 21 → 19, `ssim`
+     cũng nhích lên 0.7996 → 0.8011. Không mẫu nào khác trong 6 mẫu bị giảm
+     điểm ở bất kỳ chỉ số nào.
 
 **Lưu ý về môi trường:** lần chạy eval đầu tiên trên máy này báo điểm
 "hoàn hảo" giả 1.0 cho policy_claude_draft. Root cause: lần gọi headless
@@ -531,12 +570,13 @@ cách mình so sánh)
   revert" số 3; bug #3(c) lại đang mở.
 - **Trọng tâm hiện tại (chưa bắt đầu):** với #1/#4 (và false-negative của
   nó) đã khép lại, các mục liên quan tới `text_sim` tiếp theo là #2
-  (nhãn/footer → hàng bảng giả, thấy ở 3/7 mẫu — hiện là nguyên nhân chính
-  khiến `policy_claude_draft` vẫn thấp nhất) và #6 (dòng tiếp nối của ô wrap
-  bị rơi khỏi bảng, thấy ở vietnamese_doc) — #6 rủi ro hơn vì một fix đã thử
-  từng gây regression ở
-  vài mẫu không liên quan và phải revert (xem #6 bên dưới), nên #2 có lẽ là
-  lựa chọn tiếp theo an toàn hơn.
+  (nhãn/footer → hàng bảng giả, thấy ở vi/unicode/time-new-roman và
+  vi/unicode/mixed trong bộ mẫu hiện tại — trước đây cũng là nguyên nhân
+  chính khiến `policy_claude_draft` thấp nhất, nhưng mẫu đó đã bị xóa khỏi
+  bộ mẫu, xem ghi chú ở bảng điểm) và #6 (dòng tiếp nối của ô wrap bị rơi
+  khỏi bảng, thấy ở vietnamese_doc) — #6 rủi ro hơn vì một fix đã thử từng
+  gây regression ở vài mẫu không liên quan và phải revert (xem #6 bên
+  dưới), nên #2 có lẽ là lựa chọn tiếp theo an toàn hơn.
 - #2 (nhãn/footer → hàng bảng giả) ưu tiên thấp hơn / mang tính thiết kế
   nhiều hơn (cần logic phân loại header/footer) — đáng để scope riêng.
 - #3(a) (tách đoạn văn không nhất quán / lệch auto-wrap) vẫn đang mở và
