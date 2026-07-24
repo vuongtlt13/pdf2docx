@@ -245,6 +245,47 @@ toàn bộ tham chiếu chéo đã có trong tài liệu này.
   thuần — có thể kết hợp thẳng cột + tỷ lệ khoảng-cách-dọc/chiều-cao-dòng,
   và/hoặc giới hạn theo font/cỡ chữ của dòng đơn độc khớp với ngữ cảnh
   đang mở (bảng hoặc list item), verify từng bước với toàn bộ tập mẫu.
+- **Cập nhật (2026-07-24), root cause hoá ra sâu hơn ghi nhận trước đây:**
+  đã instrument trực tiếp `collect_stream_lines()` (in từng `row` — group
+  block theo `group_by_rows()` — thay vì chỉ dòng đơn lẻ, để tránh nhiễu vì
+  hàm này chạy 2 lần/trang: lần 1 xử lý nội dung thật, lần 2 xử lý lại các
+  mảnh vỡ mồ côi đã bị văng ra ở lần 1, lúc đó mọi thứ hiển nhiên
+  `flow=True` vĩnh viễn vì không còn ngữ cảnh bảng nào để so). Xác nhận ở
+  bảng CRM (`vi/unicode/time-new-roman`): cột "Mô tả chi tiết" của hàng dữ
+  liệu đầu tiên chứa một đoạn mô tả nhiều câu, dài hơn hẳn các cột khác
+  cùng hàng — các dòng wrap của nó tràn xuống thấp hơn cả điểm kết thúc
+  của các cột ngắn cùng hàng, đến mức **chồng lấn theo trục y với hàng dữ
+  liệu tiếp theo**. Cụ thể: nhóm `row` chứa nhãn/người phụ trách/trạng thái
+  của **hàng 2** ("Cấu trúc hóa đơn " / "VƯƠNG" / "Đang thực hiện") lại bị
+  gộp chung với dòng `'phẩm" để xuất hóa đơn trong '` — dòng này thực chất
+  vẫn là phần đuôi câu mô tả của **hàng 1**, không phải nội dung cột "Mô tả
+  chi tiết" của hàng 2. Nghĩa là bug không chỉ nằm ở việc `is_flow_layout()`
+  đóng bảng quá sớm cho 1 dòng đơn lẻ — cell cao bất thường khiến **dải
+  toạ độ y của 2 hàng bảng logic khác nhau chồng lấn/xen kẽ nhau về mặt thị
+  giác**, nên một bộ phân loại theo-từng-hàng-một (trên xuống, trái sang
+  phải) không thể quy đúng dòng về đúng hàng dù có sửa điều kiện
+  `is_flow_layout()` thế nào đi nữa, nếu không giải quyết cột trước.
+- **Vì sao khó fix an toàn:** một fix chỉ dựa trên tín hiệu hình học cục bộ
+  (khớp x0/x1 của dòng đơn lẻ với 1 cột đã biết + khoảng cách dọc nhỏ) —
+  cách tiếp cận ban đầu định thử — không phân biệt được "dòng tiếp nối của
+  chính cell đang mở" với "giá trị của hàng MỚI nhưng tình cờ cùng vị trí
+  cột" vì cả hai đều có cùng độ lớn khoảng cách dọc trong một số mẫu
+  (`vietnamese_doc`) — ghép nhầm dòng sẽ đổi bug "mất/vỡ cấu trúc" thành
+  bug "trộn nhầm nội dung 2 hàng", không chắc là cải thiện. Hướng đi đúng
+  nhiều khả năng cần dựng lại theo **cột trước, hàng sau** (xác định toàn
+  bộ dải x của các cột trong cả vùng bảng trước, sau đó với mỗi cột tự xác
+  định ranh giới hàng dựa trên các cột ngắn hơn làm neo) — phạm vi/rủi ro
+  lớn hơn hẳn B2/B3, không phải một patch nhỏ. **Quyết định (2026-07-24):
+  tạm hoãn B1, ưu tiên B4 trước** — xem mục ưu tiên cuối file.
+- **Ghi chú riêng cho biểu hiện ở list bullet (`vi/unicode/calibri`):** khi
+  instrument trực tiếp, root cause của biểu hiện này **có thể không giống
+  hệt** biểu hiện ở bảng — trace cho thấy dòng tiếp nối bullet luôn có
+  `table_open=False` cả trước và sau (không có bảng giả nào từng mở ở khu
+  vực này), nghĩa là việc nó bị tách `<w:p>` riêng nhiều khả năng xảy ra ở
+  một bước xử lý khác (gộp dòng thành đoạn văn, `Lines.py`/`parse_block()`)
+  chứ không hẳn qua cùng cơ chế `collect_stream_lines()`/`is_flow_layout()`
+  như bảng. **Chưa xác nhận lại kỹ** — cần re-verify riêng trước khi coi 2
+  biểu hiện là cùng 1 root cause như tài liệu cũ từng khẳng định.
 
 ### B2. Cặp nhãn:giá trị (label:value) bị dựng thành bảng giả (trước đây là #2)
 
@@ -410,17 +451,24 @@ phần duplicate-append đã fix (mục "Đã fix" #8); phần còn lại (tách
 "Ngày"/"Ngày thực hiện" ở `vi/unicode/mixed`) là bug thật nhưng mức độ
 thấp (vỡ cấu trúc đoạn văn, không mất nội dung):
 
-1. **B1 (dòng tiếp nối rơi khỏi bảng/list)** — bug gây thiệt hại nặng nhất
-   ở từng mẫu bị ảnh hưởng (dominant cause của 31 dòng changed ở
-   time-new-roman, vỡ bảng nhìn thấy rõ ở vietnamese_doc, dọn luôn được #7
-   cũ) nhưng rủi ro hơn: fix duy nhất đã thử từng gây regression lan rộng.
-   Cần tín hiệu phát hiện chính xác hơn (thẳng cột + tỷ lệ khoảng-cách-dọc/
-   chiều-cao-dòng, giới hạn theo font/cỡ chữ khớp ngữ cảnh) trước khi thử
-   lại, verify từng bước với toàn bộ tập mẫu.
-2. **B4(a)/(d)** — bug thật, nhìn thấy được ở (a), chưa thấy ảnh hưởng
+1. **B4(a)/(d)** — bug thật, nhìn thấy được ở (a), chưa thấy ảnh hưởng
    hình ảnh ở (d) nhưng sai về cấu trúc; chưa có ai thử fix. B4(c) đã có
    fix (bị revert) — nên root-cause B6 trước khi thử lại B4(c)/mục "Đã thử
    và revert" #3. B4(b) ưu tiên thấp (vô hình, chỉ mang tính cấu trúc).
+2. **B1 (dòng tiếp nối rơi khỏi bảng/list) — tạm hoãn (2026-07-24).** Bug
+   gây thiệt hại nặng nhất ở từng mẫu bị ảnh hưởng (dominant cause của 31
+   dòng changed ở time-new-roman, vỡ bảng nhìn thấy rõ ở vietnamese_doc,
+   dọn luôn được #7 cũ), nhưng root cause hoá ra sâu hơn ghi nhận trước
+   đây: không chỉ là `is_flow_layout()` đóng bảng quá sớm cho 1 dòng đơn
+   lẻ, mà là **cell cao bất thường khiến dải toạ độ y của 2 hàng bảng
+   logic khác nhau chồng lấn nhau** (xác nhận qua instrument trực tiếp ở
+   bảng CRM `vi/unicode/time-new-roman` — xem chi tiết trong mục B1 phía
+   trên). Một fix chỉ dựa tín hiệu hình học cục bộ (khớp cột + khoảng cách
+   dọc) không phân biệt được "dòng tiếp nối cell đang mở" với "giá trị
+   hàng mới cùng vị trí cột" — rủi ro đổi bug này thành bug khác (trộn
+   nhầm nội dung 2 hàng) chứ không chắc là sửa đúng. Cần dựng lại theo
+   cột-trước-hàng-sau, phạm vi lớn hơn hẳn B2/B3/B4 — quyết định hoãn lại,
+   ưu tiên B4 trước.
 3. **B2 còn lại ("Ngày"/"Ngày thực hiện" tách rời ở `vi/unicode/mixed`)**
    — không mất dữ liệu, chỉ vỡ cấu trúc đoạn văn; rủi ro fix tương tự B1
    (điều kiện kích hoạt cùng nằm ở logic phát hiện bảng-giả/shading), nên
