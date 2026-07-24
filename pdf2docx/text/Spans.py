@@ -17,7 +17,12 @@ class Spans(ElementCollection):
                 span = ImageSpan(raw_span)
             else:
                 span = TextSpan(raw_span)
-                if not span.text.strip() and not span.style: 
+                # drop only genuinely empty/artifact spans (no text at all); a
+                # whitespace-only span (e.g. a lone inter-word space that PyMuPDF
+                # grouped into its own font run) still carries real width/position
+                # and must be kept, otherwise the two neighboring words get
+                # concatenated with no space between them.
+                if not span.text and not span.style:
                     span = None
 
             self.append(span)

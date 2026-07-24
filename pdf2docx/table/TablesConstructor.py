@@ -322,7 +322,40 @@ class TablesConstructor:
         col_num = len(cols_lines)
         is_reference = col_num<=2
 
-        # outer borders construct the table, so they're not just for reference        
+        # a column that splits into MORE rows than the column with the fewest row
+        # breaks is over-segmented by wrapped (multi-line) cell content, not by
+        # genuine row boundaries -- e.g. a 3-line description sitting next to
+        # single-line cells elsewhere in the same row. A column can only ever be
+        # over-segmented by wrapping, never under-segmented, so the minimum row
+        # count across all columns is the true number of rows here.
+        row_counts = [len(rows) for rows in group_lines]
+        min_row_num = min(row_counts) if row_counts else 0
+
+        if col_num>2 and min_row_num==1:
+            # some column definitively has only one row here -> the whole chunk
+            # is one logical row; force every column's internal borders to stay
+            # reference-only so none of them spuriously split it.
+            is_reference = True
+        elif col_num>2 and min_row_num>1:
+            # re-bucket over-segmented columns using the row boundaries of a
+            # column at the minimum row count, so wrapped text collapses back
+            # into its one logical row instead of spuriously splitting the table.
+            ref_rows = next((rows for rows in group_lines if len(rows)==min_row_num), None)
+            cuts = [(ref_rows[k].bbox.y1 + ref_rows[k+1].bbox.y0) / 2.0
+                for k in range(min_row_num-1)]
+            for i, rows in enumerate(group_lines):
+                if len(rows) <= min_row_num: continue
+                buckets = [Lines() for _ in range(min_row_num)]
+                for row_lines in rows:
+                    for line in row_lines:
+                        idx = 0
+                        for cut in cuts:
+                            if line.bbox.y0 < cut: break
+                            idx += 1
+                        buckets[idx].append(line)
+                group_lines[i] = [bucket for bucket in buckets if len(bucket)]
+
+        # outer borders construct the table, so they're not just for reference
         if col_num>=2: # outer borders contribute to table structure
             for border in outer_borders:
                 border.is_reference = False
@@ -367,11 +400,11 @@ class TablesConstructor:
                     y1 = rows_lines[j+1].bbox.y0
 
                     # bottom border of current row
-                    # NOTE: for now, this horizontal border is just for reference; 
+                    # NOTE: for now, this horizontal border is just for reference;
                     # it'll becomes real border when used as an outer border
                     bottom = Border(border_type='HI',
-                        border_range=(y0, y1), 
-                        borders=(left, right), 
+                        border_range=(y0, y1),
+                        borders=(left, right),
                         reference=is_reference)
                     borders.append(bottom)
 
