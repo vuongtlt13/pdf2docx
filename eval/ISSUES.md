@@ -65,6 +65,35 @@ khi bị xóa) đã bị **xóa khỏi `eval/samples/`** vì là một tài li�
 bảo mật — không được commit vào git, không còn cách nào tái xác nhận qua
 eval tự động.
 
+**Cập nhật (2026-07-24, sau khi fix B4(a)/B4(d) và regenerate fixture
+`vi/unicode/time-new-roman/original.docx`):** bảng dưới đây là số liệu mới
+nhất, thay thế bảng ở trên. Hai thay đổi kể từ bảng trước: (1) fix B4(a)
+(free-space heuristic không phân biệt được ngắt dòng chủ ý với word-wrap
+tự nhiên — xem "Đã fix" #9) và B4(d) (`_join_lines_vertically` thiếu check
+font/size — xem "Đã fix" #10); (2) fixture `time-new-roman/original.docx`
+được điền lại cột "Phụ trách"/"Trạng thái" (trước đó trống, lệch so với
+`input.pdf` — xem mục "Không phải bug pdf2docx — fixture lỗi thời"), giúp
+điểm số của mẫu này phản ánh đúng bug B1 thật thay vì lẫn nhiễu từ fixture.
+
+| mẫu                          | ssim   | text_sim | text_sim_strict | changed | số trang (gốc/ra) |
+|------------------------------|--------|----------|------------------|---------|-------------------|
+| en/unicode                   | 0.6963 | 0.9988   | 0.6122           | 19      | 2 / 2             |
+| vi/unicode/arial              | 0.9163 | 1.0000   | 0.8235           | 3       | 2 / 2             |
+| vi/unicode/calibri            | 0.7917 | 1.0000   | 0.8696           | 6       | 2 / 2             |
+| vi/unicode/mixed              | 0.8187 | 0.9976   | 0.9153           | 5       | 3 / 3             |
+| vi/unicode/time-new-roman     | 0.8183 | 0.9653   | 0.7397           | 19      | 3 / 3             |
+| vietnamese_doc                | 0.8005 | 0.9342   | 0.6792           | 17      | 2 / 2             |
+| **TỔNG**                      | **0.8069** | **0.9826** | **0.7733**   |     |                   |
+
+Sau khi loại bỏ nhiễu fixture, `vi/unicode/time-new-roman` vẫn còn text_sim
+0.9653/text_strict 0.7397 (thay vì 1.0/~1.0 nếu không có bug) — phần chênh
+lệch còn lại ở mẫu này (và ở `vietnamese_doc`, mẫu thấp điểm nhất) gần như
+hoàn toàn do **B1** (nội dung ô bảng bị văng ra ngoài bảng thành đoạn văn
+rời rạc khi chiều cao hàng không đều), theo `text_diff_loose.txt` của cả
+hai mẫu. B1 hiện là bug ảnh hưởng lớn nhất còn lại tới `text_sim` — quyết
+định có đầu tư fix hay tiếp tục hoãn thuộc về đánh giá rủi ro/lợi ích của
+người dùng.
+
 ## Đã fix
 
 1. **Thiếu khoảng trắng giữa các từ, thường xảy ra ngay trước một nguyên âm
@@ -448,15 +477,19 @@ toàn bộ tham chiếu chéo đã có trong tài liệu này.
 
 ## Không phải bug pdf2docx — fixture lỗi thời
 
-- **`vi/unicode/time-new-roman/original.docx` bị lệch (stale) so với
-  `input.pdf` của chính mẫu đó.** Cột "Phụ trách"/"Trạng thái" của bảng CRM
-  trống ở cả 5 hàng trong `original.docx`, nhưng xác nhận qua trích xuất
-  text trực tiếp từ `input.pdf` (PyMuPDF) rằng PDF nguồn thật sự có nội
-  dung ở các ô đó ("VƯƠNG", "Hoàn thành", "ĐĂNG", "Nguyễn T. Dũng", "Đã
-  tiếp nhận", "Chờ xử lý"...). Output của pdf2docx **đầy đủ hơn** "ground
-  truth" ở đây — một phần nhiễu trong diff của mẫu này đến từ fixture lỗi
-  thời, không phải lỗi pdf2docx. Cần cập nhật lại `original.docx` của mẫu
-  này để nó khớp `input.pdf` nếu muốn dùng mẫu này đo chính xác bug B1.
+- **[ĐÃ SỬA 2026-07-24] `vi/unicode/time-new-roman/original.docx` bị lệch
+  (stale) so với `input.pdf` của chính mẫu đó.** Cột "Phụ trách"/"Trạng
+  thái" của bảng CRM trống ở cả 5 hàng trong `original.docx`, nhưng xác
+  nhận qua trích xuất text trực tiếp từ `input.pdf` (PyMuPDF) rằng PDF
+  nguồn thật sự có nội dung ở các ô đó ("VƯƠNG", "Hoàn thành", "ĐĂNG",
+  "Nguyễn T. Dũng", "Đã tiếp nhận", "Chờ xử lý"...). Output của pdf2docx
+  **đầy đủ hơn** "ground truth" ở đây — một phần nhiễu trong diff của mẫu
+  này đến từ fixture lỗi thời, không phải lỗi pdf2docx. Đã điền lại 5 hàng
+  đó trong `original.docx` (qua `python-docx`, chỉ set `.text` lên run
+  rỗng có sẵn để giữ nguyên style) cho khớp nội dung `input.pdf`. Sau khi
+  sửa fixture, điểm số "sạch" hơn của mẫu này (không còn nhiễu từ fixture,
+  chỉ còn phản ánh bug B1 thật): text_sim 0.9622→0.9653, text_strict
+  0.6849→0.7397 — xem bảng cập nhật ở đầu file.
 
 ## Phát hiện phụ, mức độ thấp (không cần ưu tiên ngay)
 
