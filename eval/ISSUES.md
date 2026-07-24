@@ -154,6 +154,66 @@ eval tự động.
      — bug này hiếm khi trùng điều kiện kích hoạt với B2, nhưng vẫn là 1
      lỗi thật cần fix để không lặp lại ở dữ liệu khác).
 
+9. **B4(a) — `parse_line_break()` chèn `<w:br/>` cứng sai vào giữa một
+   đoạn văn wrap tự nhiên** (`pdf2docx/text/Lines.py: parse_line_break()`)
+   — hàm quyết định ngắt dòng cứng cho mỗi "hàng vật lý" trong một
+   `TextBlock` dựa trên `free_space` (khoảng trống cuối hàng so với mép
+   phải rộng nhất của cả block) vượt ngưỡng `line_break_free_space_ratio`
+   (mặc định 0.1). Vấn đề: với một đoạn văn dài wrap tự nhiên (không có
+   ngắt đoạn thật ở nguồn), vị trí wrap của mỗi dòng phụ thuộc hoàn toàn
+   vào độ dài từ — một dòng có thể "tình cờ" chừa lại 10-13% khoảng trống
+   chỉ vì từ tiếp theo không vừa, không phải vì tác giả chủ ý ngắt dòng ở
+   đó. Ngưỡng 0.1 quá chặt để phân biệt 2 trường hợp này, gây false
+   positive: `en/unicode`'s đoạn "The transition toward cloud-native
+   architectures..." (free_space ratio 0.103 và 0.129, đều vượt ngưỡng
+   nhưng chỉ vì từ tiếp theo — "understanding" rộng 81.6pt, "compromising"
+   rộng 80.5pt — không vừa khoảng trống 46.2pt/57.7pt còn lại) và
+   `vi/unicode/time-new-roman`'s tiêu đề "TỔNG HỢP DỮ LIỆU ĐA..." (ratio
+   0.175, từ tiếp theo "MIỀN:" rộng 97.7pt > khoảng trống 79.7pt).
+   - **Fix:** thêm hàm `_leading_word_width(line)` (đọc `char.bbox` từng
+     ký tự tới khoảng trắng đầu tiên để đo bề rộng từ đầu tiên của hàng kế
+     tiếp). Trong `parse_line_break()`, khi `free_space` vượt ngưỡng, chỉ
+     giữ quyết định ngắt dòng nếu từ đầu tiên của hàng kế tiếp **thực sự
+     vừa** trong khoảng trống đó (`next_word_width <= free_space`) — tức
+     là dòng kết thúc sớm do chủ ý, không phải do từ tiếp theo không vừa.
+     Chỉ áp dụng cho text ngang, alignment khác `RIGHT` (phạm vi hẹp, an
+     toàn); logic `line_break` do block quá hẹp (`line_break_width_ratio`)
+     và hàng cuối (luôn reset về không ngắt) giữ nguyên không đổi. Đây là
+     thay đổi chỉ có thể chuyển `True→False` (bỏ bớt break sai), không bao
+     giờ thêm break mới — giảm rủi ro regression.
+   - **Verify:** `eval/run_eval.py` — `en/unicode`: ssim 0.4933→0.6963
+     (2/3→2/2 trang, hết tràn trang), text_strict 0.5714→0.6122;
+     `vi/unicode/time-new-roman`: text_strict 0.6849→0.7123; 4 mẫu còn lại
+     điểm số giữ nguyên y hệt (không regression). Xác nhận trực tiếp qua
+     `text_diff.txt`: cả 2 đoạn văn trên giờ xuất hiện là 1 dòng liên tục,
+     đúng như bản gốc.
+
+10. **B4(d) — `_join_lines_vertically()` gộp nhầm 2 đoạn văn khác hẳn
+    font/size thành 1 `TextBlock` chỉ vì khoảng cách dọc nhỏ**
+    (`pdf2docx/layout/Blocks.py: _join_lines_vertically()`) — docstring
+    hứa hẹn gộp dòng "same properties (spacing, font, size)" nhưng code
+    thực tế **chưa bao giờ so sánh font/size**, chỉ so khoảng cách dọc
+    (`vertical_distance`) với `ref_dis` (khoảng cách dòng phổ biến nhất
+    của *cả trang*, không phải cục bộ theo từng đoạn). Hệ quả: một tiêu
+    đề cỡ chữ lớn (30pt) đứng ngay trên một đoạn thân bài (12pt) với
+    khoảng cách dọc tình cờ nhỏ (6.4pt, nằm trong `ref_dis+1.0=6.9`) bị
+    gộp làm một `TextBlock`, và vì tiêu đề không kết thúc bằng dấu câu nên
+    `_split_text_block_vertically()`/`split_vertically_by_text()` (dựa
+    tín hiệu dấu câu cuối câu + khoảng trống) không tách lại được — 2 đoạn
+    văn nguồn thật hoá thành 1 `<w:p>` nối bằng `<w:br/>` cứng.
+    - **Fix:** thêm điều kiện so sánh `line_height()` (chiều cao span có
+      nhiều ký tự nhất trong dòng, đã có sẵn hàm helper) giữa dòng hiện
+      tại và dòng kế tiếp — chỉ gộp nếu
+      `max(h1,h2) <= max_line_spacing_ratio*min(h1,h2)`, tái dùng tham số
+      `max_line_spacing_ratio` (1.5) đã có sẵn thay vì thêm ngưỡng mới.
+      Title (33.5pt line height) vs body (13.4pt) có ratio 2.5 > 1.5 nên
+      giờ tách đúng thành 2 block; 2 dòng title với nhau (ratio 1.0) hay
+      2 dòng thân bài với nhau vẫn gộp bình thường.
+    - **Verify:** `eval/run_eval.py` — `vi/unicode/arial`: ssim
+      0.8655→0.9163, text_strict 0.6250→0.8235, changed 6→3 dòng; **5 mẫu
+      còn lại điểm số giữ nguyên y hệt** (không regression). Xác nhận qua
+      `python-docx`: tiêu đề và đoạn thân bài giờ là 2 `<w:p>` riêng biệt.
+
 **Lưu ý về môi trường:** file `input.pdf` fallback tự sinh (dùng khi một
 mẫu chỉ có `original.docx`) được cache xuống đĩa ngay lần dùng đầu, vì việc
 render docx→pdf của LibreOffice có độ rung (jitter) trong cách dàn trang
@@ -335,13 +395,15 @@ toàn bộ tham chiếu chéo đã có trong tài liệu này.
 
 ### B4. Không nhất quán khi tách/gộp đoạn văn tại ranh giới dòng bị wrap (gộp 4 biến thể, trước đây là #3(a)/(b)/(c) + biến thể mới (d))
 
-- **(a) Auto-wrap dựng sai vị trí xuống dòng khi thiếu `<w:br/>` cứng:**
-  `en/unicode` (đoạn "cloud-native architectures..." — 3 dòng ở nguồn ra
-  thành 4 dòng ở output, dòng cuối "independently without" trơ trọi — xác
-  nhận qua so pixel ảnh render), `vi/unicode/time-new-roman` (tiêu đề
-  "TỔNG HỢP DỮ LIỆU..." có `<w:br/>` sau "ĐA" nhưng không có sau "TRỊ" —
-  cùng một `<w:p>`, chỉ là hard-break không nhất quán). Một `<w:p>` duy
-  nhất nhưng số dòng dựng lại sai khác so nguồn — bug thật, nhìn thấy được.
+- **(a) [ĐÃ FIX 2026-07-24] Auto-wrap dựng sai vị trí xuống dòng khi thiếu
+  `<w:br/>` cứng:** `en/unicode` (đoạn "cloud-native architectures..." —
+  3 dòng ở nguồn ra thành 4 dòng ở output, dòng cuối "independently
+  without" trơ trọi — xác nhận qua so pixel ảnh render),
+  `vi/unicode/time-new-roman` (tiêu đề "TỔNG HỢP DỮ LIỆU..." có `<w:br/>`
+  sau "ĐA" nhưng không có sau "TRỊ" — cùng một `<w:p>`, chỉ là hard-break
+  không nhất quán). Root cause + fix: xem mục "Đã fix" #9
+  (`parse_line_break()`'s free-space-ratio heuristic không phân biệt được
+  wrap tự nhiên với ngắt dòng chủ ý).
 - **(b) Tách thành 2 `<w:p>` nhưng bù `space_before` ≈ chiều cao dòng nên
   vô hình:** `en/unicode` ("Technical Implementation: Microservices" /
   "Architecture") — đã xác nhận qua so ảnh, không có khác biệt nhìn thấy
@@ -356,14 +418,15 @@ toàn bộ tham chiếu chéo đã có trong tài liệu này.
   của trang, và LibreOffice/Word đều bỏ qua `space_before` cho đoạn đầu
   trang). **Tinh chỉnh so với ghi nhận trước:** mức độ hiển thị phụ thuộc
   cả vị trí trang (đầu trang hay không), không chỉ renderer.
-- **(d) MỚI — chiều ngược lại: gộp 2 đoạn văn nguồn thật thành 1 `<w:p>`
-  qua `<w:br/>` cứng.** `vi/unicode/arial`: tiêu đề "Bài Toán Quy Nạp và
-  Nghịch Lý Con Gà Tây" (font/size/màu riêng) và đoạn thân bài (font/size/
-  màu khác hẳn) — 2 đoạn văn riêng biệt ở nguồn — bị fuse thành một
-  `<w:p>` duy nhất nối bằng `<w:r><w:br/></w:r>`, chỉ giữ lại `pPr`
-  (spacing/indent) của đoạn đầu. Xác nhận qua `python-docx`. Hiện **vô
-  hình** khi render (pixel gần như giống hệt), nhưng về cấu trúc là sai —
-  cùng họ bug với (a), chỉ ngược hướng (gộp thay vì tách).
+- **(d) [ĐÃ FIX 2026-07-24] chiều ngược lại: gộp 2 đoạn văn nguồn thật
+  thành 1 `<w:p>` qua `<w:br/>` cứng.** `vi/unicode/arial`: tiêu đề "Bài
+  Toán Quy Nạp và Nghịch Lý Con Gà Tây" (font/size/màu riêng) và đoạn thân
+  bài (font/size/màu khác hẳn) — 2 đoạn văn riêng biệt ở nguồn — bị fuse
+  thành một `<w:p>` duy nhất nối bằng `<w:r><w:br/></w:r>`, chỉ giữ lại
+  `pPr` (spacing/indent) của đoạn đầu. Xác nhận qua `python-docx`. Ban đầu
+  tưởng **vô hình** khi render (pixel gần như giống hệt), nhưng sau khi
+  fix thì ssim/text_strict đều cải thiện rõ — impact thực tế lớn hơn ghi
+  nhận ban đầu. Root cause + fix: xem mục "Đã fix" #10.
 
 ### B5. Cột bảng bị xóa hoàn toàn khi mọi giá trị trong đó đều rỗng (trước đây là #5)
 
@@ -444,18 +507,15 @@ toàn bộ tham chiếu chéo đã có trong tài liệu này.
 
 Xếp hạng lại theo bằng chứng thu thập được hôm nay (mức ảnh hưởng quan sát
 được + độ rõ ràng của giả thuyết root cause, không chỉ theo `text_sim`).
-B3 (chèn `<w:tab/>` thừa) đã fix — xem mục "Đã fix" #7, không còn trong
-danh sách này. B2 đã hạ ưu tiên sau khi xác minh lại: **không có mất dữ
-liệu thật** ("Date"/"Person" đều nguyên vẹn, chỉ là điểm mù công cụ diff),
-phần duplicate-append đã fix (mục "Đã fix" #8); phần còn lại (tách rời
-"Ngày"/"Ngày thực hiện" ở `vi/unicode/mixed`) là bug thật nhưng mức độ
-thấp (vỡ cấu trúc đoạn văn, không mất nội dung):
+B3 (chèn `<w:tab/>` thừa) đã fix — xem mục "Đã fix" #7. B4(a) và B4(d) đã
+fix — xem mục "Đã fix" #9, #10, không còn trong danh sách này. B2 đã hạ ưu
+tiên sau khi xác minh lại: **không có mất dữ liệu thật** ("Date"/"Person"
+đều nguyên vẹn, chỉ là điểm mù công cụ diff), phần duplicate-append đã fix
+(mục "Đã fix" #8); phần còn lại (tách rời "Ngày"/"Ngày thực hiện" ở
+`vi/unicode/mixed`) là bug thật nhưng mức độ thấp (vỡ cấu trúc đoạn văn,
+không mất nội dung):
 
-1. **B4(a)/(d)** — bug thật, nhìn thấy được ở (a), chưa thấy ảnh hưởng
-   hình ảnh ở (d) nhưng sai về cấu trúc; chưa có ai thử fix. B4(c) đã có
-   fix (bị revert) — nên root-cause B6 trước khi thử lại B4(c)/mục "Đã thử
-   và revert" #3. B4(b) ưu tiên thấp (vô hình, chỉ mang tính cấu trúc).
-2. **B1 (dòng tiếp nối rơi khỏi bảng/list) — tạm hoãn (2026-07-24).** Bug
+1. **B1 (dòng tiếp nối rơi khỏi bảng/list) — tạm hoãn (2026-07-24).** Bug
    gây thiệt hại nặng nhất ở từng mẫu bị ảnh hưởng (dominant cause của 31
    dòng changed ở time-new-roman, vỡ bảng nhìn thấy rõ ở vietnamese_doc,
    dọn luôn được #7 cũ), nhưng root cause hoá ra sâu hơn ghi nhận trước
@@ -468,7 +528,12 @@ thấp (vỡ cấu trúc đoạn văn, không mất nội dung):
    hàng mới cùng vị trí cột" — rủi ro đổi bug này thành bug khác (trộn
    nhầm nội dung 2 hàng) chứ không chắc là sửa đúng. Cần dựng lại theo
    cột-trước-hàng-sau, phạm vi lớn hơn hẳn B2/B3/B4 — quyết định hoãn lại,
-   ưu tiên B4 trước.
+   ưu tiên B4 trước (nay B4 đã xong, đến lượt B1 cần được xem xét lại,
+   hoặc tiếp tục hoãn sang B5/B6 nếu vẫn đánh giá rủi ro quá cao).
+2. **B4(b)/(c)** còn lại chưa fix: (b) ưu tiên thấp (vô hình, chỉ mang
+   tính cấu trúc — ảnh hưởng tìm/thay thế theo câu, điều hướng con trỏ,
+   screen reader). (c) đã có fix (bị revert) — nên root-cause B6 trước
+   khi thử lại B4(c)/mục "Đã thử và revert" #3.
 3. **B2 còn lại ("Ngày"/"Ngày thực hiện" tách rời ở `vi/unicode/mixed`)**
    — không mất dữ liệu, chỉ vỡ cấu trúc đoạn văn; rủi ro fix tương tự B1
    (điều kiện kích hoạt cùng nằm ở logic phát hiện bảng-giả/shading), nên

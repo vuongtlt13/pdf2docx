@@ -14,6 +14,20 @@ from ..common import constants
 from ..common.share import is_list_item
 
 
+def _leading_word_width(line):
+    '''Width of the first word (chars up to the first whitespace) in ``line``.'''
+    first_x0 = last_x1 = None
+    for span in line.spans:
+        if not isinstance(span, TextSpan): break
+        for char in span.chars:
+            if char.c.isspace():
+                if first_x0 is not None: return last_x1 - first_x0
+                continue
+            if first_x0 is None: first_x0 = char.bbox[0]
+            last_x1 = char.bbox[2]
+    return last_x1 - first_x0 if first_x0 is not None else 0.0
+
+
 class Lines(ElementCollection):
     '''Collection of text lines.'''
 
@@ -188,10 +202,10 @@ class Lines(ElementCollection):
         return flag
 
 
-    def parse_line_break(self, bbox, 
-                line_break_width_ratio:float, 
+    def parse_line_break(self, bbox,
+                line_break_width_ratio:float,
                 line_break_free_space_ratio:float):
-        '''Whether hard break each line. 
+        '''Whether hard break each line.
 
         Args:
             bbox (Rect): bbox of parent layout, e.g. page or cell.
@@ -205,7 +219,7 @@ class Lines(ElementCollection):
         break only when it's necessary to, e.g. short lines.
         '''
 
-        block = self.parent        
+        block = self.parent
         idx0, idx1 = (0, 2) if block.is_horizontal_text else (3, 1)
         block_width = abs(block.bbox[idx1]-block.bbox[idx0])
         layout_width = bbox[idx1] - bbox[idx0]
@@ -215,7 +229,8 @@ class Lines(ElementCollection):
 
         # check by each physical row
         rows = self.group_by_physical_rows()
-        for lines in rows:
+        num_rows = len(rows)
+        for i, lines in enumerate(rows):
             for line in lines: line.line_break = 0
 
             # check the end line depending on text alignment
@@ -225,15 +240,28 @@ class Lines(ElementCollection):
             else:
                 end_line = lines[-1]
                 free_space = abs(block.bbox[idx1]-end_line.bbox[idx1])
-            
+
             if block.alignment == TextAlignment.CENTER: free_space *= 2 # two side space
-            
-            # break line if 
-            # - width ratio lower than the threshold; or 
+
+            # break line if
+            # - width ratio lower than the threshold; or
             # - free space exceeds the threshold
-            if line_break or free_space/block_width > line_break_free_space_ratio:
+            exceeds_free_space = free_space/block_width > line_break_free_space_ratio
+
+            # A large trailing free space alone doesn't prove an intentional
+            # break: ordinary word-wrap can leave a similar-looking gap by
+            # chance whenever the next word happens not to fit. Only trust
+            # the free-space signal when the next row's leading word would
+            # actually have fit in that space -- i.e. the line ended early
+            # because the source chose to, not because it had to.
+            if (exceeds_free_space and block.is_horizontal_text
+                    and block.alignment != TextAlignment.RIGHT and i+1 < num_rows):
+                next_word_width = _leading_word_width(rows[i+1][0])
+                if next_word_width > free_space: exceeds_free_space = False
+
+            if line_break or exceeds_free_space:
                 end_line.line_break = 1
-        
+
         # no break for last row
         for line in rows[-1]: line.line_break = 0
 

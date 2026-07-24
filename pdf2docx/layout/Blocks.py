@@ -494,9 +494,11 @@ class Blocks(ElementCollection):
                 elif block.image_spans or ref_line.image_spans:
                     start_new_block = True
                 
-                # lower than common line spacing: needn't to create new text block
+                # lower than common line spacing, and similar font size: needn't to create new text block
                 elif vertical_distance(ref_line, block)<=ref_dis+1.0 and \
-                    ref_dis<=max_line_spacing_ratio*line_height(ref_line):
+                    ref_dis<=max_line_spacing_ratio*line_height(ref_line) and \
+                    max(line_height(ref_line), line_height(block)) \
+                        <= max_line_spacing_ratio*min(line_height(ref_line), line_height(block)):
                     start_new_block = False
                 
                 else:
