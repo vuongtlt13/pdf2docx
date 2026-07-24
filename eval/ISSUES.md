@@ -8,20 +8,25 @@ tín hiệu phụ, mang tính chẩn đoán. Một fix làm cải thiện `text_
 dù có làm giảm `ssim`/số trang; một fix làm giảm `text_sim` là xấu dù có
 làm tăng `ssim`.
 
+**Ghi chú về lần phân tích này (2026-07-24):** tài liệu này được viết lại
+từ đầu sau khi chạy lại `eval/run_eval.py` (điểm số giống hệt lần chạy
+trước — không có thay đổi code nào giữa hai lần) và điều tra lại độc lập,
+từ bằng chứng thô (diff + XML docx + ảnh trang đã render), cả 6 mẫu trong
+bộ eval hiện tại — không giả định các mục "Bug trong pdf2docx" của phiên
+bản tài liệu trước vẫn còn đúng nguyên văn. Kết quả: phần lớn các bug cũ
+được xác nhận lại nhưng **nghiêm trọng hơn/phổ biến hơn** so với ghi nhận
+trước đó (đặc biệt #2 và #6 cũ, xem bên dưới), và phát hiện thêm một bug
+mới, xuất hiện ở 5/6 mẫu, chưa từng được ghi nhận trước đây (chèn
+`<w:tab/>` thừa giữa câu/giữa từ). **Số thứ tự bug đã được đánh lại từ đầu**
+(B1, B2, ...) theo mức độ ảnh hưởng quan sát được hôm nay; mỗi mục đều ghi
+chú số cũ tương ứng (nếu có) để tiện tra cứu chéo với lịch sử commit trước
+đó. Mục "Đã fix" (fix #1/#2/#4/#5/#6 cũ) không bị đánh lại số vì đó là ghi
+chép lịch sử đã xong, đã xác nhận vẫn còn đúng ở lần rà soát này (không
+mẫu nào rò rỉ lại glyph marker bullet/số thứ tự).
+
 Ảnh chụp nhanh từ lần chạy đầy đủ gần nhất (6 mẫu — `policy_claude_draft`
-đã bị **xóa khỏi bộ mẫu** vì là tài liệu nội bộ bảo mật, xem ghi chú riêng
-bên dưới bảng), sau khi fix xong các bug #1, #2, và #4 (xem mục "Đã fix")
-— #4 dựng lại các marker bullet/số thứ tự thành list thật của Word, khép
-lại 2 mục #1 và #4 trong `Bugs in pdf2docx` (trùng số nhưng khác danh sách
-— xem ghi chú ở đầu mục đó). Fix về margin/ngắt section (trước đây là mục
-"Đã fix" số 3) đã **thử làm rồi revert** — xem mục "Đã thử và revert" bên
-dưới; không có thay đổi nào của nó còn tồn tại trong ảnh chụp này. Mục "Đã
-fix" số 5 xử lý một false-negative của fix #4: marker bullet không được
-phát hiện khi style của nó trùng hệt với span nội dung theo ngay sau, cộng
-với một cải tiến ở phía `run_eval.py` để `text_sim` không tính các token
-marker còn sót lại (nếu có) là mismatch thật. Mục "Đã fix" số 6 (mới) mở
-rộng danh sách glyph bullet được nhận diện — phát hiện khi điều tra vì sao
-`vietnamese_doc` có `text_sim` thấp nhất trong 6 mẫu.
+vẫn không có mặt, đã bị **xóa khỏi bộ mẫu** vì là tài liệu nội bộ bảo mật,
+xem ghi chú riêng bên dưới bảng):
 
 `run_eval.py` hiện báo cáo hai chỉ số về nội dung văn bản (xem phần chú
 giải mà chính script eval in ra để biết định nghĩa chính xác):
@@ -33,7 +38,7 @@ giải mà chính script eval in ra để biết định nghĩa chính xác):
 - **`text_sim_strict`** — độ tương đồng ở cấp đoạn văn/hàng bảng
   (`text_diff.txt`), nhạy với việc một đoạn bị tách/gộp khác đi ngay cả khi
   các từ giống hệt nhau. Vẫn giữ lại vì hữu ích để phát hiện khác biệt về
-  *cấu trúc* (vd. bug #3(b)), nhưng không phải chỉ số chính để tối ưu.
+  *cấu trúc*, nhưng không phải chỉ số chính để tối ưu.
 
 | mẫu                          | ssim   | text_sim | text_sim_strict | changed | số trang (gốc/ra) |
 |------------------------------|--------|----------|------------------|---------|-------------------|
@@ -45,553 +50,340 @@ giải mà chính script eval in ra để biết định nghĩa chính xác):
 | vietnamese_doc                | 0.8011 | 0.9342   | 0.6415           | 19      | 2 / 2             |
 | **TỔNG**                      | **0.7651** | **0.9821** | **0.6392**   |     |                   |
 
-**Ghi chú:** `policy_claude_draft` (từng có mặt trong các lần chạy trước,
-ssim 0.5838 / text_sim 0.8982 / text_sim_strict 0.4559 / 74 changed / 5→7
-trang) đã bị **xóa khỏi `eval/samples/`** vì là một tài liệu nội bộ bảo
-mật — không được commit vào git. Các mục "Đã fix" bên dưới vẫn tham chiếu
-số liệu của nó vì đó là số liệu thật tại thời điểm fix được xác nhận, và
-các bug nó từng minh họa (đặc biệt #2 — nhãn/footer bị gộp thành hàng bảng
-giả) vẫn còn thật, chỉ là giờ không còn cách nào tái xác nhận qua eval tự
-động nữa; các mẫu còn lại (vi/unicode/time-new-roman, vi/unicode/mixed)
-vẫn minh họa được bug #2 nên nó chưa "mù" hoàn toàn.
+**Ghi chú:** `policy_claude_draft` (từng có mặt trong các lần chạy trước
+khi bị xóa) đã bị **xóa khỏi `eval/samples/`** vì là một tài liệu nội bộ
+bảo mật — không được commit vào git, không còn cách nào tái xác nhận qua
+eval tự động.
 
 ## Đã fix
 
 1. **Thiếu khoảng trắng giữa các từ, thường xảy ra ngay trước một nguyên âm
    có dấu tiếng Việt** — đã fix trong `pdf2docx/text/Spans.py` (ngưỡng
-   khoảng cách để gộp span không tính đến độ rộng của glyph dấu). Đã xác
-   nhận qua eval: `text_sim` tăng trên vietnamese_doc, vi/unicode/calibri,
-   vi/unicode/mixed, không có mẫu nào bị giảm điểm.
+   khoảng cách để gộp span không tính đến độ rộng của glyph dấu).
 
 2. **Ô bảng có nội dung nhiều dòng bị tách thành các hàng giả thừa** — root
    cause nằm ở `pdf2docx/table/TablesConstructor.py: _inner_borders()`: với
    bảng >2 cột, mọi khoảng cách hàng phát hiện được trong nội bộ từng cột
-   đều bị coi là ranh giới hàng thật, nên một ô bị wrap (nhiều dòng) nằm
-   cạnh các ô một dòng khác sinh ra các hàng giả thừa. Đã fix bằng cách lấy
-   cột có số cụm-hàng phát hiện được ít nhất làm nguồn xác định số hàng
-   thật (một cột chỉ có thể bị *chia quá mức* do wrap, không bao giờ bị
-   chia thiếu) — gom lại các dòng của các cột khác theo ranh giới hàng của
-   cột đó, và coi "có cột nào đó chỉ hiện đúng 1 hàng" là bằng chứng chắc
-   chắn rằng cả khối đó là một hàng logic duy nhất.
-   - Đã xác nhận fix thành công qua eval: bảng CRM task 5 hàng của
-     vi/unicode/time-new-roman giờ gộp mô tả bị wrap của mỗi hàng thành một
-     hàng, hàng tiêu đề giống hệt byte-by-byte so với nguồn (trước đây cùng
-     bảng này ra thành 11+ hàng vỡ, xem ví dụ cũ bên dưới). Không mẫu nào
-     trong 6 mẫu còn lại bị giảm điểm; `text_sim` tổng của vietnamese_doc
-     cũng tăng (0.3774 → 0.3922) như một hiệu ứng phụ.
-   - **Vấn đề còn sót lại, khác gốc rễ, phát hiện trong lúc verify fix này
-     (CHƯA fix, xem #6 bên dưới):** trong bảng của vietnamese_doc, các hàng
-     mà *nhiều* cột cùng wrap một lúc (vd. cả "Hạng mục" và "Note" cùng
-     wrap) vẫn còn bị vỡ — nhưng nguyên nhân nằm ở tầng trước
-     `_inner_borders`, trong `collect_stream_lines()`/`is_flow_layout()`,
-     không phải logic ranh giới hàng đã fix ở đây.
+   đều bị coi là ranh giới hàng thật. Đã fix bằng cách lấy cột có số
+   cụm-hàng phát hiện được ít nhất làm nguồn xác định số hàng thật (một cột
+   chỉ có thể bị *chia quá mức* do wrap, không bao giờ bị chia thiếu).
+   - **Vẫn còn đúng ở lần rà soát này** cho đúng trường hợp nó nhắm tới (một
+     cột wrap, các cột khác không) — nhưng đây là một cơ chế **khác** với
+     bug B1 bên dưới (nhiều cột cùng wrap một lúc), thứ vẫn đang gây vỡ bảng
+     nặng ở cả `vietnamese_doc` và `vi/unicode/time-new-roman`. Đừng nhầm
+     hai bug này là một.
 
 4. **Marker bullet/số thứ tự được dựng lại thành list thật của Word** —
-   khép lại 2 mục #1 (bullet) và #4 (số thứ tự) trong `Bugs in pdf2docx`
-   bên dưới. Root cause: pdf2docx ghi glyph marker (`●`, `○`, `"1."`, ...)
-   như một run `<w:r><w:t>` thuần văn bản rồi theo sau bằng `<w:tab/>`,
-   không có `<w:numPr>` nào cả — nên output *trông* giống list nhưng không
-   thể sửa như một list thật (không thể nối tiếp list bằng Enter, đánh lại
-   số, đổi kiểu bullet, v.v.).
-   - Đã fix trong `pdf2docx/text/TextBlock.py` + `pdf2docx/common/docx.py`:
-     - `TextBlock` giờ làm phẳng mọi `(line, span)` trong một block thành
-       một chuỗi phẳng duy nhất (`_flatten_spans`) — cần thiết vì một số
-       PDF nhét nguyên hai list item vào chung một đối tượng `Line` nội bộ,
-       không có ranh giới xuống dòng/tab nào giữa chúng, nên chỉ dò marker
-       ở span đầu tiên của mỗi `Line` sẽ bỏ sót các trường hợp này.
-     - Một span được xếp loại là marker (`_detect_markers`) nếu văn bản của
-       nó (một glyph bullet nằm trong tập được chọn lọc, hoặc khớp pattern
-       số thứ tự `^\(?\d{1,3}[.\)]`) VÀ style tuple `(font, size, color,
-       flags)` của nó khác với span nội dung theo ngay sau — chỉ so tên
-       font ban đầu được thử trước nhưng không đáng tin, vì một số PDF để
-       trống `.font` cho cả marker lẫn nội dung; size/color vẫn khác nhau
-       trong các trường hợp đó.
-     - Block được tách thành từng đoạn docx riêng cho mỗi list item
-       (`_group_list_items` + `insert_paragraph_before()`), mỗi đoạn được
-       gán style list thật qua hàm mới `docx.apply_list_style()` — hàm này
-       chỉ đơn giản gán các style đoạn văn có sẵn trong template mặc định
-       của python-docx (`List Bullet`/`List Number`), vốn đã mang sẵn
-       `<w:numPr>` ở cấp *style*, nên không cần tự viết
-       `numbering.xml`/`abstractNum` thủ công. Block không phát hiện được
-       marker nào thì vẫn render theo từng `Line` như cũ, không đổi.
-   - Đã xác nhận qua eval: `text_sim` tổng 0.9633 → 0.9687, `text_sim_strict`
-     0.5014 → 0.5971 (cấu trúc đoạn văn giờ khớp nguồn sát hơn nhiều như một
-     hiệu ứng phụ), không đổi số trang ở mẫu nào, `ssim` giảm không đáng kể
-     (0.7401 → 0.7396). `vi/unicode/calibri` đạt `text_sim` tuyệt đối
-     1.0000. Không mẫu nào trong 7 mẫu bị giảm điểm.
-   - **Đính chính:** một báo cáo trước đây ở đây từng nói "hai mẫu không có
-     nội dung list (`policy_claude_draft`, `vi/unicode/arial`) hoàn toàn
-     không bị ảnh hưởng" — điều này **sai** cho `policy_claude_draft`: mẫu
-     đó thực ra có rất nhiều nội dung bullet-list, chỉ là fix này không kích
-     hoạt được cho nó vì một edge case cụ thể — xem mục "Đã fix" số 5 bên
-     dưới.
+   root cause: pdf2docx ghi glyph marker (`●`, `○`, `"1."`, ...) như một
+   run `<w:r><w:t>` thuần văn bản, không có `<w:numPr>` nào cả. Đã fix
+   trong `pdf2docx/text/TextBlock.py` + `pdf2docx/common/docx.py`:
+   `TextBlock._flatten_spans()` làm phẳng `(line, span)` thành chuỗi phẳng,
+   `_detect_markers()` phát hiện marker qua text + so style với span nội
+   dung theo sau, `_group_list_items()` tách block thành từng đoạn docx
+   riêng gán style `List Bullet`/`List Number` qua `docx.apply_list_style()`.
 
 5. **Marker bullet không được phát hiện khi style của nó trùng hệt với span
-   nội dung theo ngay sau (false-negative của fix #4)** — cộng thêm một cải
-   tiến độc lập ở `run_eval.py` để chỉ số `text_sim` không tính các token
-   marker leftover (nếu có) là mismatch thật.
-   - **Root cause (xác nhận qua instrument trực tiếp** `_detect_markers()`
-     trên PDF của `policy_claude_draft`): `_detect_markers()` chỉ gắn cờ một
-     span là marker nếu style tuple `(font, size, color, flags)` của nó khác
-     với span nội dung theo sau — nhưng ở tài liệu này, cả span bullet lẫn
-     span nội dung đều có `font='Arial', size=11.0, color=3026478, flags=0`
-     giống hệt nhau. Điều kiện so-style vốn được thêm để tránh false
-     positive (vd. một tiêu đề đánh số thường như `"1. Introduction"` bị
-     nhầm thành marker list thật, làm mất chữ "1." khỏi `.text`) — nhưng với
-     bullet glyph (`•`, `○`, ...), rủi ro false-positive đó gần như không
-     tồn tại: một glyph bullet đứng một mình gần như không bao giờ là nội
-     dung câu thật.
-   - **Fix** trong `pdf2docx/text/TextBlock.py: _detect_markers()`: tách
-     điều kiện so-style ra khỏi nhánh `kind == ('bullet', ...)` — bullet giờ
-     được chấp nhận là marker chỉ dựa trên text (khớp `_BULLET_MARKERS`),
-     không cần so style nữa. Nhánh `kind == ('number', 0)` (số thứ tự) vẫn
-     giữ nguyên điều kiện so-style như cũ, vì rủi ro false-positive ở đó vẫn
-     thật.
-   - **Cải tiến bổ sung, độc lập, ở phía eval** (`eval/run_eval.py`,
-     `extract_all_words()`): một glyph marker bullet/số còn sót lại trong
-     `.text` (do PDF producer khác hoặc edge case chưa fix) chỉ là một ký tự
-     thừa người dùng sẽ xóa đi, không phải nội dung phải gõ lại — không nên
-     tính là mismatch thật khi so `text_sim`. Đã thêm `_is_list_marker_token()`
-     (dùng cùng tập glyph bullet + pattern số thứ tự như phía pdf2docx, để
-     nhất quán) để lọc các token này khỏi cả hai phía trước khi so
-     `difflib.SequenceMatcher` — chỉ áp dụng cho `text_sim` (chuỗi từ toàn
-     tài liệu), không đụng tới `text_sim_strict` (so ở cấp đoạn văn/hàng,
-     nơi xóa một token khỏi giữa một chuỗi rủi ro hơn).
-   - Đã xác nhận qua eval (cả 7 mẫu, số liệu ở bảng đầu tài liệu): `text_sim`
-     của `policy_claude_draft` tăng 0.8891 → 0.8982 (+0.0091),
-     `text_sim_strict` 0.3824 → 0.4559, `changed` giảm 84 → 74, không đổi số
-     trang. `text_sim` tổng 0.9687 → 0.9699 (+0.0012). Hai mẫu
-     (`vi/unicode/mixed`, `vi/unicode/time-new-roman`) giảm không đáng kể
-     (-0.0001, nhiễu do `SequenceMatcher` canh lại vị trí sau khi bớt từ,
-     không phải regression thật). Không mẫu nào giảm điểm ở `text_sim_strict`
-     hay số trang.
-   - Phần còn lại của khoảng cách `text_sim` ở `policy_claude_draft` (vẫn
-     thấp nhất trong 7 mẫu) chủ yếu đến từ bug #2 (nhãn/footer trang bị gộp
-     vào nội dung như hàng bảng giả) — đã xác nhận qua thử nghiệm riêng
-     (chuẩn hoá thêm token marker rồi so lại) rằng phần chênh lệch còn sót
-     lại chủ yếu là do bug #2, không phải marker leak.
+   nội dung theo ngay sau (false-negative của fix #4)** — đã tách điều kiện
+   so-style ra khỏi nhánh `kind == ('bullet', ...)` trong `_detect_markers()`
+   (`TextBlock.py`): bullet giờ được chấp nhận là marker chỉ dựa trên text,
+   không cần so style (nhánh `('number', 0)` vẫn giữ so style, vì rủi ro
+   false-positive ở số thứ tự vẫn thật). Cộng thêm `_is_list_marker_token()`
+   ở `run_eval.py` để lọc token marker leftover khỏi so sánh `text_sim`.
 
-6. **Danh sách glyph bullet được nhận diện (`_BULLET_MARKERS` trong
-   `TextBlock.py`) thiếu nhiều glyph bullet phổ biến khác — cùng loại lỗi
-   với #1/#4, chỉ khác glyph cụ thể.**
-   - Phát hiện khi điều tra vì sao `vietnamese_doc` có `text_sim` thấp nhất
-     trong 6 mẫu (sau khi `policy_claude_draft` bị xóa khỏi bộ mẫu): marker
-     `■` (U+25A0 BLACK SQUARE) rò rỉ thành text thuần trước
-     `"Cấp độ 2: Phân tích yêu cầu và thiết kế UI/UX."` — whitelist cũ chỉ
-     có `▪` (U+25AA, ô vuông nhỏ hơn), không có `■` (ô vuông lớn), dù cả hai
-     đều là bullet hình vuông thông thường.
-   - **Fix:** mở rộng `_BULLET_MARKERS` (`pdf2docx/text/TextBlock.py:44-47`)
-     và `_LIST_MARKER_GLYPHS` (`eval/run_eval.py`, giữ đồng bộ hai bên như
-     đã làm ở fix #5) thêm một tập glyph bullet phổ biến khác, theo 3 mức
-     độ đậm/nhạt tương tự các glyph đã có:
-     - đậm (level 0, cùng nhóm `•`/`●`/`▪`): `■` (ô vuông lớn), `♦` (kim
-       cương), `▸` (tam giác nhỏ đặc), `★` (sao đặc)
-     - nhạt/hollow (level 1, cùng nhóm `○`/`◦`): `□` (ô vuông rỗng), `▹`
-       (tam giác nhỏ rỗng), `☆` (sao rỗng)
-     - mũi tên (level 2, cùng nhóm `‣`/`◉`): `➤`, `➢`
-     - Cố tình **không** thêm ký hiệu tick/check (`✓`, `✔`) hay dash (`–`)
-       vào danh sách — hai loại này rủi ro false-positive cao hơn nhiều vì
-       thường là nội dung thật (checkbox đã tick, dấu gạch nối trong câu),
-       không phải marker list.
-   - Đã xác nhận qua eval (cả 6 mẫu): `vietnamese_doc` `text_sim` 0.9327 →
-     0.9342, `text_sim_strict` 0.6038 → 0.6415, `changed` 21 → 19, `ssim`
-     cũng nhích lên 0.7996 → 0.8011. Không mẫu nào khác trong 6 mẫu bị giảm
-     điểm ở bất kỳ chỉ số nào.
+6. **`_BULLET_MARKERS` (`TextBlock.py`) thiếu nhiều glyph bullet phổ biến
+   khác** (vd. `■` U+25A0 không có, dù `▪` U+25AA đã có) — đã mở rộng cả
+   `_BULLET_MARKERS` và `eval/run_eval.py`'s `_LIST_MARKER_GLYPHS` với một
+   tập glyph đậm/nhạt/mũi tên phổ biến khác, cố tình loại trừ tick/dash vì
+   rủi ro false-positive cao hơn.
+   - **Xác nhận vẫn còn đúng ở lần rà soát này**: không có glyph bullet trần
+     nào rò rỉ ra `text_diff.txt` của bất kỳ mẫu nào trong 6 mẫu hiện tại.
 
-**Lưu ý về môi trường:** lần chạy eval đầu tiên trên máy này báo điểm
-"hoàn hảo" giả 1.0 cho policy_claude_draft. Root cause: lần gọi headless
-*đầu tiên* của LibreOffice trên cache fontconfig hệ thống còn "lạnh" làm
-sai lệch cách phân trang; original.docx và output.docx tình cờ bị sai
-giống hệt nhau lần đó. Đã verify lại sau khi cache đã "ấm" — số trang ổn
-định từ đó. Cần nghi ngờ bất kỳ lần chạy eval đơn lẻ nào ngay sau khi máy/
-container vừa khởi động lại; chạy lại một lần nữa để xác nhận độ ổn định.
-Ngoài ra, file `input.pdf` fallback tự sinh (dùng khi một mẫu chỉ có
-`original.docx`) giờ được cache xuống đĩa ngay lần dùng đầu tiên, vì việc
+**Lưu ý về môi trường:** file `input.pdf` fallback tự sinh (dùng khi một
+mẫu chỉ có `original.docx`) được cache xuống đĩa ngay lần dùng đầu, vì việc
 render docx→pdf của LibreOffice có độ rung (jitter) trong cách dàn trang
 giữa các lần chạy, nếu không cache sẽ khiến điểm số trôi dạt qua từng lần
-chạy mà không có lý do thực sự nào.
+chạy mà không có lý do thực sự nào. Cũng cần nghi ngờ bất kỳ lần chạy eval
+đơn lẻ nào ngay sau khi máy/container vừa khởi động lại (cache fontconfig
+của LibreOffice "lạnh" có thể làm sai lệch cách phân trang lần đầu).
 
 ## Đã thử và revert
 
 3. **`space_before` lớn một cách vô lý ở đoạn văn đầu tiên của trang/section
-   mới (root cause của bug #3(c) bên dưới, đã xác nhận nhưng fix bên dưới
-   đã bị revert) — cộng với một tối ưu bổ sung về số lượng ngắt section.**
-   - **Root cause (đã xác nhận qua instrument trực tiếp, không chỉ đọc
-     code):** `RawPage.calculate_margin()` và `RawPage.parse_section()`
-     (`pdf2docx/page/RawPage.py`) tính margin trang / ranh giới section từ
-     hợp bbox của `self.blocks` và `self.shapes`, trước đây chỉ loại trừ
-     `Hyperlink`. Một số mẫu có một shape `Fill` màu trắng phủ toàn trang
-     (nền trang trí, vô hình trên giấy trắng) bị tính vào không lọc, làm
-     méo margin trên tính được xuống gần ~0. Điều này lan sang
-     `Blocks._parse_block_vertical_spacing()`
-     (`before_space = block.bbox.top - column.working_bbox.top`) và
-     `TextBlock.parse_exact_line_spacing()`, sinh ra `space_before` ~68pt
-     vô lý được ghi nhận ở bug #3(c). **Root cause này vẫn còn thật và vẫn
-     còn tồn tại trong code** — chỉ có fix cho nó bị revert, chưa fix bug
-     gốc.
-   - **Fix đã thử:** thêm `RawPage._visible_shapes()`, dùng ở cả
-     `calculate_margin()` và `parse_section()` thay cho danh sách
-     `self.shapes` thô. Hàm này loại trừ `Hyperlink` (như cũ) cộng thêm một
-     `Fill` màu trắng chỉ khi nó *đồng thời* phủ ≥90% chiều rộng và chiều
-     cao trang — tức là nền phủ toàn trang, không phải nội dung thật. Một
-     `Fill` trắng nhỏ (vd. nền ô bảng hợp lệ, xác nhận tồn tại ở
-     vi/unicode/calibri với ~28%/4% độ phủ rộng/cao) phải được giữ lại, vì
-     loại trừ mọi `Fill` trắng vô điều kiện đã được thử trước và gây
-     regression nặng ở đó.
-   - Đã xác nhận qua kiểm tra trực tiếp (không chỉ điểm eval) rằng fix hoạt
-     động đúng như thiết kế: `space_before` của đoạn văn từng là 68pt ở
-     en/unicode trở thành `0`, và margin trang của các trang bị ảnh hưởng
-     trở thành giá trị dương hợp lý thay vì gần `(0, 0, 0, 0)`.
-   - **Tối ưu bổ sung cũng đã thử (`pdf2docx/page/Page.py`):** trước đây,
-     `Page.make_docx()` tạo một `WD_SECTION.NEW_PAGE` mới cho *mọi* trang
-     PDF một cách vô điều kiện (có lý do chính đáng vì mỗi trang PDF có thể
-     có kích thước/margin riêng — nhưng lãng phí khi các trang liên tiếp
-     thực ra dùng chung kích thước/margin, vd. hầu hết tài liệu văn bản
-     nhiều trang). Đã thêm `Page._matches_section()`: nếu kích thước/margin
-     của trang đang vào khớp với section docx cuối cùng hiện tại trong
-     phạm vi `constants.MINOR_DIST` (1pt), thì phát ra một
-     `doc.add_page_break()` thường thay vì tạo section mới. Đã xác nhận
-     riêng lẻ là hoàn toàn vô hại trên bộ 7 mẫu (không có cặp trang nào có
-     margin đủ gần để kích hoạt việc dùng lại dưới cách tính margin lỗi cũ)
-     — nó chỉ bắt đầu có tác dụng khi kết hợp với fix margin ở trên.
+   mới** (root cause của bug B4(c) bên dưới) — cộng với một tối ưu bổ sung
+   về số lượng ngắt section.
+   - **Root cause (đã xác nhận qua instrument trực tiếp):**
+     `RawPage.calculate_margin()`/`parse_section()` (`pdf2docx/page/RawPage.py`)
+     tính margin trang/ranh giới section từ hợp bbox của `self.blocks` và
+     `self.shapes`, trước đây chỉ loại trừ `Hyperlink`. Một shape `Fill`
+     trắng phủ toàn trang (nền trang trí, vô hình trên giấy trắng) bị tính
+     vào không lọc, làm méo margin trên tính được xuống gần ~0, lan thành
+     `space_before` vô lý (~68-72pt) cho đoạn văn đầu tiên của section mới.
+   - **Fix đã thử:** `RawPage._visible_shapes()` loại trừ thêm một `Fill`
+     trắng chỉ khi nó *đồng thời* phủ ≥90% chiều rộng và chiều cao trang
+     (phân biệt với `Fill` trắng nhỏ hợp lệ, vd. nền ô bảng).
+   - **Tối ưu bổ sung cũng đã thử** (`pdf2docx/page/Page.py`):
+     `Page._matches_section()` dùng `add_page_break()` thường thay vì tạo
+     section mới khi kích thước/margin trang khớp section docx hiện tại.
    - **Lý do revert:** kết hợp lại, hai fix này làm giảm `ssim`/số trang
-     trên 2 trong 7 mẫu — vi/unicode/calibri (2→2 trang trước, 2→3 sau;
-     ssim 0.7926→0.5472) và en/unicode (đã sẵn 2→3, ssim 0.4937→0.4905,
-     gần như không đổi). `text_sim`/`text_sim_strict` được xác nhận giống
-     hệt byte-by-byte trước/sau ở cả 7 mẫu (fix này chỉ đụng vào bố cục
-     trang, không bao giờ đụng vào nội dung văn bản) — nên theo ưu tiên đã
-     nêu của dự án (khớp văn bản quan trọng hơn số trang) trade-off này ban
-     đầu được chấp nhận, nhưng sau đó người dùng yêu cầu revert lại
-     ("có vẻ nó k work" — 2026-07-24) trước khi bắt đầu làm bug #1/#4 (rò
-     rỉ marker list). **Hiện đã revert; `RawPage.py`/`Page.py` trở về trạng
-     thái trước fix.** Xem bug #8 bên dưới để biết root cause mới phát hiện
-     của regression ssim/số trang (một bug riêng, vẫn đang mở), thứ sẽ tái
-     xuất hiện nếu fix này được thử lại.
-   - Lịch sử lặp (giữ lại để tham khảo nếu thử lại): lần đầu thử loại trừ
-     mọi `Fill` trắng vô điều kiện → làm hỏng vi/unicode/calibri (một lưới
-     3×4 các `Fill` trắng nhỏ hợp lệ của ô bảng bị loại trừ, làm méo margin
-     trang đó thay vào đó) → thêm điều kiện tỷ lệ phủ trang, ban đầu ở
-     ≥95%, phát hiện shape nền thật của calibri đo được 94.1%/94.2% độ phủ
-     (vừa dưới ngưỡng), hạ xuống ≥90% để tách rõ nền thật (94%) khỏi các
-     fill ô hợp lệ (28%/4%).
-   - **Nếu thử lại fix này trong tương lai:** hãy root-cause bug #8 trước
-     (hoặc làm song song), vì đó mới là thứ thực sự gây ra regression số
-     trang một khi margin được tính đúng — fix #8 trước có thể sẽ giúp fix
-     này land mà không phải đánh đổi.
+     trên vi/unicode/calibri (2→3 trang, ssim 0.7926→0.5472) và en/unicode
+     (gần như không đổi). `text_sim`/`text_sim_strict` giống hệt
+     byte-by-byte trước/sau — nhưng người dùng yêu cầu revert ("có vẻ nó k
+     work" — 2026-07-24) trước khi bắt đầu làm bug marker list. **Hiện đã
+     revert; `RawPage.py`/`Page.py` trở về trạng thái trước fix.** Xem bug
+     B6 bên dưới để biết root cause khác gây regression ssim/số trang,
+     thứ sẽ tái xuất hiện nếu fix này được thử lại.
+   - **Nếu thử lại fix này trong tương lai:** hãy root-cause bug B6 trước
+     (hoặc làm song song) — đó mới là thứ thực sự gây regression số trang
+     một khi margin được tính đúng.
 
-## Bug trong pdf2docx (thật, đáng để fix)
+## Bug trong pdf2docx (thật, đáng để fix — đánh số lại theo mức ảnh hưởng quan sát được hôm nay)
 
-Mỗi bug liệt kê mọi mẫu mà nó được quan sát trực tiếp. Tất cả đều đọc từ
-`eval/results/<mẫu>/text_diff.txt` trừ khi có ghi chú khác; #3 (trước đây
-là #5) cũng đã được xác nhận qua XML docx thô (xem ghi chú về artefact của
-công cụ diff bên dưới để biết vì sao bước kiểm tra thêm đó lại quan trọng).
-**Các số bên dưới không được đánh lại số khi một mục được fix** (xem #1 và
-#4) — chúng giữ nguyên vị trí gốc và bị gạch ngang, để mọi tham chiếu chéo
-khác trong tài liệu này (#2, #3(a/b/c), #5, #6, #7, #8) vẫn đúng mà không
-cần đánh lại số.
+### B1. Dòng tiếp nối của một khối bị wrap (hàng bảng, list item, đoạn văn) rơi hẳn ra khỏi khối cha — bug cấu trúc nghiêm trọng nhất hiện tại (trước đây là #6 + #7)
 
-1. ~~**Marker bullet của list rò rỉ vào nội dung văn bản dưới dạng ký tự
-   thuần**~~ **ĐÃ FIX** — xem mục "Đã fix" số 4 ở trên (cũng bao gồm luôn
-   #4 bên dưới).
+- **Root cause đã xác nhận** trong `pdf2docx/common/Collection.py:
+  is_flow_layout()`: hàm này trả về `True` (tức "văn bản thường") ngay khi
+  một cụm chỉ có một dòng (`if len(self)<=1: return True`), không cần biết
+  gì thêm. Dòng tiếp nối của một ô/khối bị wrap thường không chồng lấn theo
+  chiều dọc với bất kỳ nội dung nào khác ở đúng vị trí y đó, nên tạo thành
+  một cụm một-dòng-đơn-độc và bị phân loại nhầm là văn bản thường — đóng
+  bảng/khối đang dựng dở trước khi logic ranh giới hàng (`_inner_borders`,
+  bug #2 ở mục Đã fix) kịp thấy nó.
+- **Thấy ở, nghiêm trọng hơn nhiều so với ghi nhận trước đây:**
+  - `vietnamese_doc` — bảng "Complex Table" 3 hàng dữ liệu bị vỡ thành
+    **5 `<w:tbl>` riêng biệt xen kẽ 4 đoạn văn trần** (đã xác nhận qua dump
+    cấu trúc `python-docx`), vd. hàng 01 "Quản lý người dùng..." vỡ ra
+    thành đoạn trần "Quản lý \nngười " + bảng
+    `01 | dùngMàn hình đăng | 2 | ... | Gán cho: Person` + đoạn trần "nhập
+    & Chỉnh \nsửa profile ". Ảnh render (`output_p01.png`) xác nhận vỡ
+    **nhìn thấy được rõ ràng** — chữ đè lên nhau, bị cắt bởi viền hàng.
+  - `vi/unicode/time-new-roman` — bảng CRM 5 hàng bị vỡ theo đúng cơ chế
+    này ở **cả 5/5 hàng**, không phải cá biệt như tài liệu cũ ngụ ý: mỗi
+    hàng ra thành một `<w:tbl>` riêng + một đoạn văn trần mồ côi chứa dòng
+    wrap đầu của ô "Mô tả chi tiết" (vd. `"Thêm trường "Tên công bố sản "`
+    đứng một mình giữa hai bảng). Đây là nguyên nhân chính của 31 dòng
+    `changed` (ước tính ~18-23/31 dòng).
+- **Bug cũ #7 (header bảng lặp lại + mảnh vỡ mồ côi sau ngắt trang) không
+  phải một root cause độc lập — đó là hệ quả của B1.** Kiểm tra
+  `original_p02.png` của `vietnamese_doc`: nguồn thật **không hề** có bảng
+  tràn qua trang 2 (toàn bộ 3 hàng vừa gọn trang 1). Chính vì B1 làm bảng
+  phình to/vỡ vụn nên phần đuôi của hàng 03 mới bị đẩy sang trang 2, và
+  mảnh `<w:tbl>` mồ côi đó lại lặp lại nguyên văn hàng tiêu đề. **Fix B1
+  đúng cách sẽ tự động dọn luôn #7**, không cần fix riêng.
+- **Cùng root cause, biểu hiện khác, thấy thêm ở list bullet (mới):**
+  `vi/unicode/calibri` — dòng tiếp nối của một bullet item bị wrap 2 dòng
+  đôi khi bị tách thành `<w:p>` riêng (phá vỡ bullet/indent, xác nhận
+  **nhìn thấy được** qua ảnh render: "font." văn trôi ra ngoài list, bullet
+  kế tiếp bị đẩy lề trái ngoài khối list), đôi khi bị gộp lại nhưng kèm một
+  `<w:tab/>` thừa chèn giữa từ (xem B3). Cùng cơ chế wrapped-continuation-
+  line-không-được-merge-đúng, chỉ khác là biểu hiện ở list thay vì bảng.
+- **Một fix đã thử và revert trong phiên làm việc trước:** cho một
+  hàng-một-dòng-đơn-độc "tiếp nối" bảng đang mở nếu nó thẳng cột với nội
+  dung hiện có, thay vì luôn đóng bảng. Giải quyết được vietnamese_doc
+  nhưng gây regression lan rộng (list bullet và header/footer trang bị hút
+  vào bảng giả ở nhiều mẫu khác) — đã revert.
+- **Chưa fix.** Cần một tín hiệu chính xác hơn chỉ-chồng-lấn-trục-x đơn
+  thuần — có thể kết hợp thẳng cột + tỷ lệ khoảng-cách-dọc/chiều-cao-dòng,
+  và/hoặc giới hạn theo font/cỡ chữ của dòng đơn độc khớp với ngữ cảnh
+  đang mở (bảng hoặc list item), verify từng bước với toàn bộ tập mẫu.
 
-2. **Một dòng nhãn/footer ngắn bị gộp vào nội dung như một hàng bảng giả**
-   thay vì giữ nguyên là một đoạn văn thường.
-   - Thấy ở: policy_claude_draft (footer trang), vi/unicode/time-new-roman
-     và vi/unicode/mixed (cặp nhãn kiểu form như `"Ngày lập:"` /
-     `"Ngày thực hiện"`).
-   - Ví dụ: `"Trang 1 | © Nội bộ – Không phát tán bên ngoài"` hiện ra như
-     một hàng *bảng* trong output (diff của mình chỉ chèn `|` cho ô bảng),
-     trong khi nguồn là một dòng footer nằm ở cuối trang PDF.
-   - Góp phần làm tăng số trang (vd. policy_claude_draft 5 → 7 trang) vì
-     các hàng thừa này đẩy nội dung sang trang mới.
+### B2. Cặp nhãn:giá trị (label:value) bị dựng thành bảng giả — giờ xác nhận có **mất/trùng dữ liệu thật**, không chỉ sai định dạng (trước đây là #2)
 
-3. **Một đoạn văn nguồn bị wrap qua nhiều dòng trong PDF đôi khi bị dựng
-   lại thành nhiều đoạn `<w:p>` riêng biệt thay vì một — không nhất quán,
-   và không phải lúc nào cũng có ảnh hưởng nhìn thấy được.** Phát hiện ở
-   en/unicode (ssim thấp nhất của nó, 0.4937, dù là tiếng Anh thuần không
-   dấu, nên vấn đề này không liên quan tới xử lý tiếng Việt/font).
-   Đã xác nhận cấu trúc qua XML docx thô cho ba trường hợp; sau đó mỗi
-   trường hợp cũng được kiểm tra lại với ảnh trang đã render thực tế
-   (`eval/results/en/unicode/pages/*.png`) để xem ranh giới `<w:p>` thừa đó
-   có nhìn thấy được không — không phải lúc nào cũng có:
-   - **(a) Một `<w:p>` duy nhất, nhưng có một bug thật (khác) bên trong
-     nó:** đoạn "cloud-native architectures..." — xác nhận chỉ một phần tử
-     đoạn văn, nhưng nó trộn hai cơ chế: một số ranh giới dòng là `<w:br/>`
-     cứng (copy y nguyên từ ranh giới dòng của PDF), trong khi các đoạn văn
-     bản khác giữa các `<w:br/>` lại **không** có break nào cả và để mặc
-     cho renderer tự wrap. Bug là ở chỗ các đoạn tự-wrap này không tái tạo
-     đúng vị trí wrap dòng của nguồn:
-     - PDF nguồn (`input.pdf`, trích xuất qua bbox dòng của PyMuPDF): đoạn
-       "understanding of container orchestration and asynchronous
-       communication patterns. In a typical microservices ecosystem,
-       individual components are decoupled, allowing teams to deploy
-       updates independently without" wrap thành **3 dòng** trong nguồn.
-     - XML của `output.docx` **không có `<w:br/>`** nào ở đúng đoạn đó (nó
-       là 3 phần tử `<w:r>` thuần không có break giữa chúng) — nên
-       LibreOffice tự wrap, và ở font/cỡ chữ đã dựng lại, nó ra thành
-       **4 dòng** thay vì 3, với "independently without" bị trơ trọi một
-       mình ở dòng cuối. Đã xác nhận bằng hình ảnh: `output_p01.png` crop
-       ra cho thấy dòng này kết thúc ở ~x=430px trong khi mọi dòng anh em
-       khác trong đoạn văn đó kéo dài tới ~x=1030-1070px (quét pixel, lấy
-       pixel tối cùng ở mỗi hàng) — một dòng ngắn rõ ràng, thật, nhìn thấy
-       được mà **không** tồn tại ở nguồn (ở đó, dòng PDF tương ứng
-       "decoupled, ... independently without" kết thúc ở x=461.9pt, đúng
-       tầm với các dòng anh em 461.9-519.6pt — tức một dòng bình thường,
-       khá đầy, không hề ngắn).
-     - **Root cause:** pdf2docx hard-code `<w:br/>` chỉ ở một số ranh giới
-       dòng phát hiện được và để các dòng khác tự reflow; khi các đoạn
-       tự-reflow không wrap đúng vị trí như PDF nguồn (có thể do lệch
-       thước đo font giữa cách pdf2docx đo độ rộng văn bản và cách
-       LibreOffice thực sự shape/đo font "Inter" lúc render), đoạn văn âm
-       thầm được thêm hoặc mất dòng so với nguồn. Mỗi dòng thừa tốn thêm
-       một khoảng chiều cao dòng cố định `w:lineRule="exact"` không có
-       trong bản gốc — một bug thật, đã xác nhận, đáng để fix.
-     - **Không phải cùng bug với (c) bên dưới, và không có liên hệ nhân
-       quả với nó.** Đây là vấn đề reflow theo chiều ngang/số dòng ở một
-       đoạn văn bản cụ thể gần đầu trang 1; vấn đề trang trắng ở (c) là do
-       một giá trị `space_before` sai cụ thể ở một đoạn văn không liên
-       quan trong một section khác, ở trang 2. Chúng không chung cơ chế —
-       vấn đề này không dịch chuyển gì theo chiều dọc ngoài phạm vi đoạn
-       văn của chính nó (chiều cao dòng cố định, nên wrap sai chỉ có thể
-       thêm/bớt nguyên dòng, không lan sang khoảng cách của các đoạn văn
-       khác). Hai lỗi riêng biệt, đã xác nhận độc lập, tình cờ nằm trong
-       cùng một tài liệu.
-   - **(b) Bị tách về mặt cấu trúc nhưng không nhìn thấy được:**
-     `"Technical Implementation: Microservices"` / `"Architecture"` là hai
-     phần tử `<w:p>` riêng biệt, nhưng pdf2docx bù lại bằng một
-     `space_before` (~9pt) gần bằng chiều cao dòng bình thường, nên
-     `output_p01.png` render tiêu đề này giống hệt như wrap từ tự nhiên —
-     đặt cạnh `original_p01.png` không có khác biệt nhìn thấy được. Đã xác
-     nhận bằng kiểm tra ảnh trực tiếp. **Không đáng fix vì mục đích chính
-     xác hình ảnh**, dù đây vẫn là một điểm lạ về cấu trúc (vd. sẽ ảnh
-     hưởng tới tìm/thay thế xuyên "câu", điều hướng con trỏ, screen
-     reader).
-   - **(c) Một khiếm khuyết thật của pdf2docx, nhưng mức độ nhìn thấy được
-     phụ thuộc vào renderer:** `"...journals."` và `"Somewhere in this
-     silence..."` là hai phần tử `<w:p>` riêng biệt, với một đoạn văn ở
-     giữa chứa `<w:sectPr>` — "đoạn văn rỗng" ở giữa này *không* phải bug,
-     nó là container OOXML bắt buộc cho một ngắt section (đã xác nhận: tài
-     liệu có đúng một ngắt như vậy, chia thành hai section, mỗi trang PDF
-     một section — một thiết kế hợp lý để giữ bố cục theo từng trang).
-     - **Khiếm khuyết thật sự:** đoạn văn bắt đầu section mới
-       (`"Somewhere..."`) được gán `space_before ≈ 68pt` (863600 EMU, tức
-       `w:before="1360"` twips). Đối chiếu với **PDF gốc thật**
-       (`original_p02.png`, trang 2 của PDF thực sự đưa vào pdf2docx): đoạn
-       văn đó bắt đầu đúng ngay tại margin trên bình thường, không có
-       khoảng trống lớn nào. Vậy giá trị 68pt mà pdf2docx tính cho đoạn
-       văn đầu tiên của section mới là sai một cách khách quan so với vị
-       trí trong nguồn — phần này là một bug thật, không phụ thuộc
-       renderer.
-     - **Mức độ nhìn thấy phụ thuộc renderer:** render qua LibreOffice
-       (`output_p02.png`), kết quả là một trang gần như trống trơn — hai
-       dòng văn bản ở trên cùng, rồi một khoảng trống lớn — đẩy phần còn
-       lại của tài liệu sang một trang thừa (nguyên nhân trực tiếp gây
-       tăng số trang 2 → 3, và là nguyên nhân chính khiến ssim thấp, vì
-       trang thứ 3 "ma" này chấm điểm 0 so với không có gì). **Tuy nhiên**,
-       mở cùng file output.docx đó trong **WPS Office**, người dùng báo là
-       không thấy khoảng trống hay tách trang nào. Giải thích khả dĩ: WPS
-       (giống MS Word, theo thực tế phổ biến) bỏ qua `space_before` cho
-       đoạn văn đầu tiên ngay sau một ngắt section, trong khi LibreOffice
-       áp dụng nó một cách literal — một dạng khác biệt renderer đã biết
-       đối với khoảng cách ở đầu trang/section, không phải thứ pdf2docx
-       kiểm soát được. Vậy: giá trị `space_before` sai là có thật và đáng
-       fix tại gốc, nhưng người dùng cuối có *nhìn thấy* nó hay không tùy
-       vào việc họ mở file bằng ứng dụng tương thích Word nào.
-   - **Root cause đã xác nhận — xem mục "Đã thử và revert" số 3 ở trên.**
-     Một shape `Fill` nền trắng phủ toàn trang bị tính vào không lọc, trong
-     hợp bbox dùng để tính margin trang và ranh giới section
-     (`RawPage.calculate_margin()`/`parse_section()`), làm méo margin trên
-     tính được xuống gần ~0 và lan thành `before_space`/`space_before` lớn
-     vô lý cho đoạn văn đầu tiên của section. Đã xác nhận qua instrument
-     trực tiếp: khi áp fix, `space_before` của đúng đoạn văn này trở thành
-     `0`, khớp với vị trí đầu trang thật của PDF nguồn — nhưng fix đã bị
-     revert (xem mục 3) vì nó gây regression số trang/ssim ở chỗ khác, nên
-     bug này **hiện vẫn còn tồn tại** trong code, chưa fix. (Cũng đã xác
-     nhận trong lúc điều tra: đây KHÔNG phải, như từng nghi ngờ ban đầu,
-     vấn đề đo từ sai điểm tham chiếu — phép tính khoảng cách dọc tự nó
-     vẫn đúng; bug nằm hoàn toàn ở chỗ những shape nào được phép ảnh hưởng
-     tới bbox margin/ranh giới.)
-   - Chưa kiểm tra xem vấn đề này có xảy ra ở các mẫu tiếng Việt không —
-     mọi chỗ trông giống tiêu đề bị tách tìm thấy ở đó, khi kiểm tra XML,
-     đều hóa ra là trường hợp (a) (một đoạn văn, có `<w:br/>`), không phải
-     bug này. Đừng cho rằng nó vắng mặt ở nơi khác mà không kiểm tra cả XML
-     *và* ảnh đã render trực tiếp — chỉ XML thôi sẽ báo cáo mức độ nghiêm
-     trọng quá cao (trường hợp b và c trông giống hệt nhau trong diff/XML
-     nhưng có ảnh hưởng hình ảnh rất khác nhau).
-   - **Lưu ý về phương pháp phát hiện được:** renderer làm ground truth
-     của eval này là LibreOffice (`docx_to_pdf()` trong `run_eval.py`);
-     một điểm ssim thấp có thể phản ánh một điểm kỳ lạ riêng của
-     LibreOffice (vd. không bỏ qua space-before ở đầu section) chứ không
-     phải thứ mà mọi người đọc đều thực sự thấy. Trước khi coi một phát
-     hiện ssim thấp là khiếm khuyết đã xác nhận là người dùng nhìn thấy
-     được, nên kiểm tra thử output.docx trong một ứng dụng tương thích
-     Word thật (Word/WPS) — như đã làm ở đây.
+- **Thấy ở 3/6 mẫu, mức độ tăng dần:**
+  - `vi/unicode/mixed`: nguồn có 2 cặp label giống hệt nhau về cấu trúc
+    ("Người"/"Người kiểm định" và "Ngày"/"Ngày thực hiện", mỗi cặp 1 `<w:p>`
+    với `<w:br/>` mềm ở giữa) — chỉ **1 trong 2** cặp bị tách thành bảng giả
+    1 hàng × 2 cột (`"Ngày"`), cặp còn lại giữ nguyên là đoạn văn bình
+    thường. Cho thấy điều kiện kích hoạt bug này là một ngưỡng biên, không
+    phải quy tắc cứng — xác nhận qua XML `python-docx`.
+  - `vi/unicode/time-new-roman`: `"Ngày lập: Date"` → bảng, và ô giá trị
+    còn chứa **một `<w:tbl>` lồng bên trong `<w:tc>`** (bảng trong ô bảng)
+    để tô nền xám cho "Date". `eval/run_eval.py` không đệ quy vào bảng
+    lồng khi trích text nên "Date" biến mất khỏi diff (`+Ngày lập: |`
+    trống sau dấu `|`) — đây là điểm mù của công cụ eval (chữ vẫn tồn tại
+    thật trong output.docx), nhưng cấu trúc bảng-lồng-trong-bảng tự nó là
+    một bug cấu trúc thật, nghiêm trọng hơn mô tả cũ.
+  - `vietnamese_doc`: `"Ngày tạo tài liệu kiểm thử: Date"` /
+    `"Người thực hiện kiểm tra: Person"` (1 đoạn văn, `<w:br/>` mềm ở giữa)
+    → bảng 2 hàng × 3 cột thật: `row0 = ['Ngày tạo tài liệu kiểm thử: ', '',
+    '​']`, `row1 = ['Người thực hiện kiểm tra: ', 'Person', 'Person']`
+    — **"Date" biến mất hoàn toàn** (thay bằng ô rỗng + zero-width space
+    còn sót), **"Person" bị nhân đôi** ra 2 ô. Đây là mất/trùng dữ liệu
+    thật, không chỉ một hàng bảng thừa vô hại. Ảnh render cho thấy có icon
+    nhỏ (avatar/placeholder) nằm sát giá trị ở vị trí này — nghi vấn (chưa
+    xác nhận) là icon đè lên bbox của giá trị làm logic tách cột bị nhầm.
+- **Chưa root-cause đầy đủ**, nhưng bằng chứng đủ mạnh để nâng ưu tiên fix
+  bug này lên cao hơn xếp hạng trước đây (từng bị coi là "chỉ mang tính
+  thiết kế, ưu tiên thấp") — vì giờ đã xác nhận có mất dữ liệu thật, không
+  chỉ sai định dạng trình bày.
 
-4. ~~**Marker số thứ tự của list rò rỉ vào văn bản dưới dạng ký tự
-   thuần**~~ **ĐÃ FIX** — xem mục "Đã fix" số 4 ở trên (cùng fix với #1).
+### B3. Chèn `<w:tab/>` thừa giữa câu/giữa từ tại các ranh giới dòng bị wrap — bug mới, chưa từng ghi nhận, xuất hiện ở 5/6 mẫu
 
-5. **Cột bảng bị xóa hoàn toàn khi mọi giá trị trong đó đều rỗng.**
-   - Thấy ở: chỉ mới en/unicode.
-   - Ví dụ: bảng "Quarterly Performance Metrics" có một cột `Status` mà mọi
-     ô đều trống trong original.docx; output.docx thiếu hẳn cột đó (cả
-     header lẫn các ô), từ 4 cột còn 3.
-   - Nguyên nhân có thể: việc phát hiện ranh giới cột khi dựng lại bảng dựa
-     vào nội dung không-phải-khoảng-trắng để suy ra phạm vi cột, nên một
-     cột toàn rỗng không có ký tự định vị nào để bám vào.
+- **Thấy ở:** `en/unicode` (list item: `"...service \tinstances."`),
+  `vi/unicode/mixed` (câu thường: `"...thời gian \tthực."`),
+  `vi/unicode/time-new-roman` (bullet item:
+  `"...đến \t4096 bit."`), `vi/unicode/calibri` (**giữa một từ**:
+  `"...ỷ\t ỹ"`, tách đôi một từ tiếng Việt), `vietnamese_doc` (câu thường,
+  2 tab liên tiếp: `"...phức \t\ttạp."`, và trong ô bảng:
+  `"Gán cho: \tPerson"`).
+- **Root cause giả thuyết** (đọc `pdf2docx/text/Lines.py`, hàm
+  `parse_tab_stop()`, ~dòng 241-282): khi một dòng tiếp nối không
+  `in_same_row()` với dòng trước, biến tham chiếu `ref` được reset về mép
+  trái của cả block (vd. vị trí glyph bullet) thay vì vị trí bắt đầu nội
+  dung thật (hanging indent) — khiến x0 thật của dòng tiếp nối trông như
+  một khoảng thụt lề giả rất lớn so với `ref`, kích hoạt chèn tab-stop tại
+  đúng điểm wrap dòng bình thường, nơi lẽ ra không cần tab nào cả. Cùng một
+  cơ chế xảy ra dù dòng tiếp nối đó cuối cùng ở trong list item, câu văn
+  thường, hay ô bảng — giải thích vì sao nó xuất hiện rộng khắp như vậy.
+- **Mức độ hiển thị trong diff/điểm số không nhất quán**: một số trường hợp
+  hiện ra như dòng `+`/`-` thật trong `text_diff.txt` (ảnh hưởng
+  `text_sim_strict`), một số bị `extract_text_lines()`'s `.strip()` (chỉ
+  strip đầu/cuối chuỗi) che khuất khi tab nằm ngay đầu chuỗi — cần kiểm tra
+  lại độ phủ chính xác của từng trường hợp khi bắt tay fix, đừng chỉ dựa
+  vào một mẫu.
+- Đây là bug rộng nhất về số mẫu bị ảnh hưởng (5/6) trong toàn bộ danh sách
+  hiện tại — ứng viên tốt cho fix tiếp theo nếu muốn tối đa hoá số mẫu
+  được cải thiện cùng lúc, và giả thuyết root cause đã khá cụ thể (khác
+  với B1, nơi một lần thử fix trước đã gây regression lan rộng).
 
-6. **Các dòng tiếp nối của ô bị wrap, khi đứng riêng lẻ, bị rơi ra khỏi
-   bảng hoàn toàn, rò rỉ thành đoạn văn bản trần — một root cause khác với
-   bug #2 (đã fix) về tách hàng, phát hiện trong lúc verify fix đó.**
-   - Thấy ở: vietnamese_doc (cùng "Complex Table" như bug #2, ở các hàng mà
-     *nhiều* cột cùng wrap một lúc, vd. cả "Hạng mục" và "Note").
-   - Ví dụ: hàng `01 | Quản lý người dùng... | 2 | Đã hoàn thành | Gán cho:
-     Person` ra thành "Quản lý" và "người" xuất hiện như các dòng đoạn văn
-     trần không nằm trong bảng, trước khi phần còn lại của hàng render
-     đúng thành một hàng bảng: `01 | dùngMàn hình đăng | 2 | Đã hoàn thành
-     | Gán cho: Person`.
-   - Root cause (đã xác nhận qua đọc code, chưa fix): trong
-     `pdf2docx/layout/Blocks.py: collect_stream_lines()`, mỗi "hàng" vật lý
-     (một cụm các dòng chồng lấn theo trục y trên trang) được phân loại là
-     văn bản thường hay nội dung bảng qua
-     `pdf2docx/common/Collection.py: is_flow_layout()`, hàm này luôn luôn
-     trả về `True` (tức "văn bản thường/đoạn văn") bất cứ khi nào cụm chỉ
-     có một dòng: `if len(self)<=1: return True`. Dòng tiếp nối của một ô
-     bị wrap thường không chồng lấn theo chiều dọc với *bất kỳ* nội dung
-     cột nào khác ở đúng vị trí y đó (thường gặp khi các ô wrap tới độ cao
-     khác nhau), nên nó tạo thành một cụm một-dòng-đơn-độc và bị phân loại
-     là văn bản thường — đóng/làm vỡ bảng đang dựng dở — trước khi
-     `_inner_borders` (phạm vi của bug #2) kịp thấy nó.
-   - **Một fix đã được thử và revert trong phiên làm việc này**: làm cho
-     một hàng-một-dòng-đơn-độc "tiếp nối" bảng đang mở nếu nó thẳng cột với
-     nội dung hiện có của bảng, thay vì luôn đóng bảng lại. Fix này giải
-     quyết được trường hợp vietnamese_doc nhưng gây regression nghiêm
-     trọng, lan rộng, xác nhận qua eval đầy đủ — các list item dạng bullet
-     và header/footer trang bị hút vào các bảng giả ở en/unicode,
-     policy_claude_draft, vi/unicode/mixed, vi/unicode/time-new-roman, và
-     cả vietnamese_doc (vd. `"•​ | Sử dụng Claude Team plan, tối thiểu
-     5 users..."` — một marker bullet bị tách thành một cột bảng giả). Đã
-     revert toàn bộ; đã xác nhận qua eval rằng việc revert khôi phục đúng
-     điểm baseline.
-   - **Chưa fix.** Một fix an toàn cần một tín hiệu chính xác hơn là chỉ
-     kiểm tra chồng lấn theo trục x đơn thuần — vd. kết hợp việc thẳng cột
-     với kiểm tra tỷ lệ khoảng-cách-dọc/chiều-cao-dòng, và có thể giới hạn
-     ở các trường hợp font/cỡ chữ của dòng đơn độc đó khớp với các ô của
-     bảng đang mở — cần verify từng bước với toàn bộ tập mẫu thay vì thử
-     một lần cho xong.
+### B4. Không nhất quán khi tách/gộp đoạn văn tại ranh giới dòng bị wrap (gộp 4 biến thể, trước đây là #3(a)/(b)/(c) + biến thể mới (d))
 
-7. **Một bảng bị ngắt qua trang phát lại hàng tiêu đề sau chỗ ngắt, và một
-   mảnh vỡ/trùng lặp xuất hiện gần điểm tách — đã nhận thấy nhưng chưa điều
-   tra.**
-   - Thấy ở: vietnamese_doc (cùng "Complex Table"). Sau nội dung hàng 03,
-     hàng tiêu đề `"STT | Hạng mục | Estimate (Giờ) | Trạng thái | Note"`
-     xuất hiện lại, ngay sau đó là một mảnh mồ côi
-     `" | kho & Xác nhận tồn kho |  |  | "` (trông giống phần đuôi của ô
-     "...Xác nhận tồn kho" ở hàng 03, bị tách ra riêng).
-   - Chưa root-cause — có thể là hành vi lặp-header-qua-trang có chủ đích
-     nhưng bị lỗi, hoặc một artefact khi parse ranh giới trang/cột liên
-     quan tới bug #6 ở trên. Cần điều tra riêng trước khi quyết định
-     có/nên fix thế nào.
+- **(a) Auto-wrap dựng sai vị trí xuống dòng khi thiếu `<w:br/>` cứng:**
+  `en/unicode` (đoạn "cloud-native architectures..." — 3 dòng ở nguồn ra
+  thành 4 dòng ở output, dòng cuối "independently without" trơ trọi — xác
+  nhận qua so pixel ảnh render), `vi/unicode/time-new-roman` (tiêu đề
+  "TỔNG HỢP DỮ LIỆU..." có `<w:br/>` sau "ĐA" nhưng không có sau "TRỊ" —
+  cùng một `<w:p>`, chỉ là hard-break không nhất quán). Một `<w:p>` duy
+  nhất nhưng số dòng dựng lại sai khác so nguồn — bug thật, nhìn thấy được.
+- **(b) Tách thành 2 `<w:p>` nhưng bù `space_before` ≈ chiều cao dòng nên
+  vô hình:** `en/unicode` ("Technical Implementation: Microservices" /
+  "Architecture") — đã xác nhận qua so ảnh, không có khác biệt nhìn thấy
+  được. Ưu tiên thấp, chỉ là điểm lạ về cấu trúc (ảnh hưởng tìm/thay thế
+  theo câu, điều hướng con trỏ, screen reader).
+- **(c) `space_before` vô lý (~68-72pt) ở đoạn văn đầu tiên của section
+  mới** — root cause đã xác nhận ở mục "Đã thử và revert" #3 (shape `Fill`
+  trắng phủ toàn trang làm méo margin trên). Thấy ở `en/unicode` (**nhìn
+  thấy được**: trang gần trống, gây tràn trang 2→3, kéo ssim xuống
+  0.4933) và `vi/unicode/arial` (cùng defect cấu trúc y hệt, xác nhận qua
+  XML — nhưng **lần này vô hình** vì đoạn văn đó tình cờ là đoạn đầu tiên
+  của trang, và LibreOffice/Word đều bỏ qua `space_before` cho đoạn đầu
+  trang). **Tinh chỉnh so với ghi nhận trước:** mức độ hiển thị phụ thuộc
+  cả vị trí trang (đầu trang hay không), không chỉ renderer.
+- **(d) MỚI — chiều ngược lại: gộp 2 đoạn văn nguồn thật thành 1 `<w:p>`
+  qua `<w:br/>` cứng.** `vi/unicode/arial`: tiêu đề "Bài Toán Quy Nạp và
+  Nghịch Lý Con Gà Tây" (font/size/màu riêng) và đoạn thân bài (font/size/
+  màu khác hẳn) — 2 đoạn văn riêng biệt ở nguồn — bị fuse thành một
+  `<w:p>` duy nhất nối bằng `<w:r><w:br/></w:r>`, chỉ giữ lại `pPr`
+  (spacing/indent) của đoạn đầu. Xác nhận qua `python-docx`. Hiện **vô
+  hình** khi render (pixel gần như giống hệt), nhưng về cấu trúc là sai —
+  cùng họ bug với (a), chỉ ngược hướng (gộp thay vì tách).
 
-8. **Nội dung do pdf2docx dựng lại chiếm nhiều không gian theo chiều dọc
-   trên mỗi trang hơn PDF thật một chút, khiến các tài liệu ở ranh giới
-   tràn sang một trang vật lý thừa một khi margin trang được tính đúng.**
-   - Hiện đang **ẩn/bị che**: vì fix margin đã bị revert (xem mục "Đã thử
-     và revert" số 3), margin trang lại bị tính sai gần bằng 0, tình cờ che
-     giấu bug này một lần nữa vì để lại thêm không gian dọc khả dụng trên
-     mỗi trang. Nó chỉ hiện ra thành một regression thật về số trang/ssim
-     một khi margin được tính đúng (tức nếu fix của mục 3 được thử lại).
-   - Thấy ở (khi áp fix của mục 3): vi/unicode/calibri (2→2 trang khi không
-     có fix margin, 2→3 khi có) và en/unicode (đã sẵn 2→3 dù có fix hay
-     không, ssim tệ hơn một chút khi có fix).
-   - **Không phải do cơ chế `space_before` của bug #3(c)** — đã xác nhận
-     qua kiểm tra trực tiếp rằng đoạn tiêu đề bị đẩy sang trang kế của
-     calibri có `space_before = 0` (không vô lý), loại trừ khả năng đó. Ở
-     en/unicode, việc tràn trang là qua một đoạn văn khác (phần tiếp nối
-     "...journals." của đoạn "cloud-native architectures..." — khiếm
-     khuyết auto-wrap của bug #3(a) — tràn sang một trang gần như trống
-     trước khi bị ngắt section cưỡng bức).
-   - **Chưa root-cause được cơ chế cụ thể.** Ứng viên khả dĩ: việc ước
-     lượng chiều cao dòng/khoảng cách đoạn văn thiếu chính xác ở đâu đó
-     khác trong pipeline layout (khác với, dù có thể tương tác cùng, bug
-     #3(a) và #3(c)) khiến nội dung dựng lại chiếm tổng chiều cao nhiều hơn
-     một chút so với nguồn. Cần điều tra riêng — so sánh tổng chiều cao nội
-     dung (tổng chiều cao dòng/đoạn văn) giữa PDF nguồn và docx sinh ra cho
-     một mẫu ở ranh giới, để tìm cơ chế nào gây ra phần không gian dọc thừa
-     đó.
-   - Đáng root-cause trước khi thử lại fix của mục 3 — fix bug này trước
-     có thể sẽ giúp fix đó land mà hoàn toàn không phải đánh đổi
-     ssim/số trang.
+### B5. Cột bảng bị xóa hoàn toàn khi mọi giá trị trong đó đều rỗng (trước đây là #5)
 
-## Artefact của công cụ diff (không phải bug pdf2docx — chỉ là nhiễu trong
-cách mình so sánh)
+- Thấy ở: chỉ mới `en/unicode` — cột `Status` (mọi ô rỗng ở nguồn) biến
+  mất hoàn toàn khỏi output (4 cột còn 3), chưa tái hiện ở mẫu khác dù đã
+  rà soát lại toàn bộ 6 mẫu lần này. Root cause khả dĩ: phát hiện ranh
+  giới cột dựa vào nội dung không-phải-khoảng-trắng, cột toàn rỗng không
+  có ký tự nào để bám vào.
+
+### B6. Nội dung dựng lại chiếm nhiều không gian dọc hơn PDF gốc một chút — chỉ hiện ra khi margin trang được tính đúng (trước đây là #8)
+
+- Hiện đang **ẩn/bị che** vì fix margin ở mục "Đã thử và revert" #3 đang
+  bị revert (margin trang lại bị tính sai gần bằng 0, tình cờ để dư không
+  gian dọc che giấu bug này). Nó chỉ hiện ra thành regression số trang/ssim
+  thật một khi margin được tính đúng.
+- Chưa root-cause được cơ chế cụ thể — đáng làm trước khi thử lại fix của
+  mục "Đã thử và revert" #3, để fix đó có thể land mà không phải đánh đổi
+  ssim/số trang.
+
+## Không phải bug pdf2docx — fixture lỗi thời
+
+- **`vi/unicode/time-new-roman/original.docx` bị lệch (stale) so với
+  `input.pdf` của chính mẫu đó.** Cột "Phụ trách"/"Trạng thái" của bảng CRM
+  trống ở cả 5 hàng trong `original.docx`, nhưng xác nhận qua trích xuất
+  text trực tiếp từ `input.pdf` (PyMuPDF) rằng PDF nguồn thật sự có nội
+  dung ở các ô đó ("VƯƠNG", "Hoàn thành", "ĐĂNG", "Nguyễn T. Dũng", "Đã
+  tiếp nhận", "Chờ xử lý"...). Output của pdf2docx **đầy đủ hơn** "ground
+  truth" ở đây — một phần nhiễu trong diff của mẫu này đến từ fixture lỗi
+  thời, không phải lỗi pdf2docx. Cần cập nhật lại `original.docx` của mẫu
+  này để nó khớp `input.pdf` nếu muốn dùng mẫu này đo chính xác bug B1.
+
+## Phát hiện phụ, mức độ thấp (không cần ưu tiên ngay)
+
+- **Zero-width space (U+200B) được giữ nguyên từ nguồn PDF vào text output**
+  (`vietnamese_doc`, 2 lần thấy: `"Alignment):​"`, `"Nam​"`). Có thể là
+  trích xuất trung thực một ký tự vô hình thật sự có trong PDF nguồn (mẫu
+  này vốn là bộ test stress-format) — không có ảnh hưởng hình ảnh/cấu trúc,
+  chỉ gây nhiễu âm thầm khi so `text_sim_strict`. Có thể đáng để pdf2docx
+  lọc bỏ các ký tự control/zero-width vô hình vì chúng không có mục đích
+  hiển thị nào, nhưng mức độ ưu tiên thấp.
+- **Một số list item giữ lại `\t` đầu dòng, một số không** (`vietnamese_doc`,
+  khối "Kiểm tra phân cấp danh sách": chỉ 2/6 item giống hệt nhau về hình
+  thức còn giữ `\t` đầu chuỗi). Vô hình khi render (Word bỏ qua khoảng
+  trắng đầu dòng) nhưng gây nhiễu `.text`/copy-paste. Có thể cùng cơ chế
+  với B3 — đáng xem lại chung khi fix B3.
+
+## Artefact của công cụ diff (không phải bug pdf2docx — chỉ là nhiễu trong cách mình so sánh)
 
 - **Một đoạn văn chứa `<w:br/>` (ngắt dòng mềm) có thể trông như bị tách
   thành nhiều đoạn trong `text_diff.txt`, dù nó là một phần tử `<w:p>` duy
   nhất.** `paragraph.text` của `python-docx` render mỗi `<w:br/>` thành một
-  ký tự `"\n"` thuần, và `extract_text_lines()` trong `eval/run_eval.py`
-  gắn cả chuỗi đó (bao gồm cả newline nhúng bên trong) làm một phần tử danh
-  sách; khi ghi ra file diff, newline nhúng đó in ra thành một dòng vật lý
-  thừa **không có dấu `+`/`-` ở đầu**.
+  ký tự `"\n"` thuần; khi ghi ra file diff, newline nhúng đó in ra thành
+  một dòng vật lý thừa **không có dấu `+`/`-` ở đầu**.
   - **Quy tắc đọc:** trong `text_diff.txt`, một dòng không có tiền tố
     `+`/`-` là phần tiếp nối do wrap mềm của dòng phía trên, KHÔNG phải một
     đoạn văn/hàng riêng biệt. Chỉ những dòng tự nó bắt đầu bằng `+`/`-` mới
-    thực sự là đoạn văn hoặc hàng bảng riêng biệt.
-  - Đây chính xác là nguyên nhân khiến một phiên bản trước của tài liệu này
-    chẩn đoán sai đoạn "cloud-native architectures..." ở en/unicode là bug
-    tách đoạn văn — không phải; kiểm tra XML cho thấy chỉ một `<w:p>`. Luôn
-    xác minh một nghi ngờ tách-đoạn-văn bằng XML thô (xem bug #3) trước khi
-    tin vào diff văn bản đơn thuần. Và ngay cả một tách XML đã xác nhận
-    cũng không tự động là bug nhìn thấy được — một vòng điều tra tiếp theo
-    ở bug #3 phát hiện tách XML có thể render giống hệt wrap bình thường
-    khi khoảng cách bù của pdf2docx gần đúng (trường hợp b); chỉ render cả
-    hai tài liệu ra PDF/PNG rồi so sánh pixel thật mới xác định được một
-    tách cấu trúc có ảnh hưởng hình ảnh hay không (trường hợp c thì có;
-    trường hợp b thì không).
+    thực sự là đoạn văn hoặc hàng bảng riêng biệt. Luôn xác minh một nghi
+    ngờ tách-đoạn-văn bằng XML thô trước khi tin vào diff văn bản đơn
+    thuần — và ngay cả một tách XML đã xác nhận cũng không tự động là bug
+    nhìn thấy được (xem B4(b) vs B4(a)/(c)); chỉ render cả hai tài liệu ra
+    PDF/PNG rồi so sánh pixel thật mới xác định được.
 - **Glyph dấu tick/ký hiệu**: các ô trong original.docx hiện trống trong
-  diff của mình (`Claude Code |  | `) trong khi output hiện `✓`. Thuộc tính
-  `.text` của `python-docx` không đọc một số glyph font ký hiệu giống cách
-  trích xuất văn bản PDF làm — không phải khiếm khuyết chuyển đổi, chỉ là
-  một lỗ hổng trong `extract_text_lines()`.
+  diff của mình trong khi output hiện `✓`. Thuộc tính `.text` của
+  `python-docx` không đọc một số glyph font ký hiệu giống cách trích xuất
+  văn bản PDF làm — không phải khiếm khuyết chuyển đổi, chỉ là một lỗ hổng
+  trong `extract_text_lines()`.
 - **Header/footer trong original.docx hoàn toàn không được so sánh**:
   `Document.paragraphs` trong `python-docx` không bao gồm nội dung
   `section.header`/`section.footer`, nên văn bản header/footer thật trong
-  original.docx không bao giờ xuất hiện ở phía `-` của diff, khiến các
-  diff liên quan tới header/footer trông một chiều (chỉ có dòng `+` từ
-  output) ngay cả khi nội dung đó thực sự tồn tại trong bản gốc.
+  original.docx không bao giờ xuất hiện ở phía `-` của diff.
+- **Bảng lồng trong ô bảng (`<w:tbl>` bên trong `<w:tc>`) không được đệ quy
+  khi trích text** — xem B2, mẫu `vi/unicode/time-new-roman`: nội dung
+  "Date" thật sự tồn tại trong output.docx nhưng biến mất khỏi diff vì
+  `extract_text_lines()` không đi vào bảng lồng. Cần sửa nếu muốn eval
+  không đánh giá thấp các trường hợp bảng-lồng-trong-bảng của B2.
 
 ## Đề xuất bước tiếp theo (chưa bắt đầu — triage/ưu tiên sau)
 
-- Gộp khoảng trắng giữa từ và tách hàng bảng (mục Đã fix #1/#2), cùng với
-  việc dựng lại marker bullet/số thứ tự (mục Đã fix #4, khép lại #1/#4
-  trong `Bugs in pdf2docx`) và fix false-negative của nó khi style trùng
-  nhau (mục Đã fix #5) đã xong — xem mục "Đã fix" ở trên. `space_before`
-  vô lý ở đầu section của #3(c) (cộng với tối ưu tái dùng section) cũng đã
-  fix, nhưng **đã revert theo yêu cầu người dùng** — xem mục "Đã thử và
-  revert" số 3; bug #3(c) lại đang mở.
-- **Trọng tâm hiện tại (chưa bắt đầu):** với #1/#4 (và false-negative của
-  nó) đã khép lại, các mục liên quan tới `text_sim` tiếp theo là #2
-  (nhãn/footer → hàng bảng giả, thấy ở vi/unicode/time-new-roman và
-  vi/unicode/mixed trong bộ mẫu hiện tại — trước đây cũng là nguyên nhân
-  chính khiến `policy_claude_draft` thấp nhất, nhưng mẫu đó đã bị xóa khỏi
-  bộ mẫu, xem ghi chú ở bảng điểm) và #6 (dòng tiếp nối của ô wrap bị rơi
-  khỏi bảng, thấy ở vietnamese_doc) — #6 rủi ro hơn vì một fix đã thử từng
-  gây regression ở vài mẫu không liên quan và phải revert (xem #6 bên
-  dưới), nên #2 có lẽ là lựa chọn tiếp theo an toàn hơn.
-- #2 (nhãn/footer → hàng bảng giả) ưu tiên thấp hơn / mang tính thiết kế
-  nhiều hơn (cần logic phân loại header/footer) — đáng để scope riêng.
-- #3(a) (tách đoạn văn không nhất quán / lệch auto-wrap) vẫn đang mở và
-  đáng fix — đây là một khiếm khuyết thật, nhìn thấy được, về số dòng.
-  Trường hợp (b) (tách nhưng không nhìn thấy được) ưu tiên thấp hơn — chỉ
-  mang tính thẩm mỹ/cấu trúc. Trường hợp (c) đã mở lại (xem ở trên). #5
-  (cột rỗng bị xóa) là phát hiện mới chỉ từ en/unicode — đáng kiểm tra xem
-  có lặp lại ở mẫu khác không trước khi ưu tiên thêm.
-- #6 (dòng tiếp nối của ô wrap bị rơi khỏi bảng) là bước tiếp theo trực
-  tiếp nhất sau fix bug #2, nhưng rủi ro hơn: fix duy nhất đã thử từng gây
-  regression ở vài mẫu không liên quan và phải revert. Cần một tín hiệu
-  phát hiện chính xác hơn trước khi thử lại.
-- #7 (trùng lặp header/mảnh vỡ bảng khi ngắt trang) chưa được điều tra —
-  cần root-cause trước khi quyết định ưu tiên.
-- #8 (nội dung dựng lại chiếm nhiều không gian dọc hơn nguồn) hiện đang ẩn
-  (bị che lại từ khi mục 3 bị revert) nhưng nên root-cause trước khi thử
-  lại mục 3 — fix #8 trước có thể sẽ giúp fix đó land mà không phải đánh
-  đổi ssim/số trang.
+Xếp hạng lại theo bằng chứng thu thập được hôm nay (mức ảnh hưởng quan sát
+được + độ rõ ràng của giả thuyết root cause, không chỉ theo `text_sim`):
+
+1. **B3 (chèn `<w:tab/>` thừa)** — ứng viên tốt nhất để làm tiếp theo: xuất
+   hiện ở 5/6 mẫu (phổ biến nhất trong toàn bộ danh sách), và giả thuyết
+   root cause đã khá cụ thể (`ref` reset sai trong `parse_tab_stop()` khi
+   dòng tiếp nối không `in_same_row()`) — khác với B1, nơi lần thử fix
+   trước đã gây regression lan rộng vì tín hiệu phát hiện còn thô.
+2. **B2 (label:value → bảng giả, có mất dữ liệu thật)** — ưu tiên tăng lên
+   so với trước (từng bị coi là ưu tiên thấp/mang tính thiết kế); giờ đã
+   xác nhận có mất/trùng dữ liệu thật ("Date" biến mất, "Person" nhân đôi
+   ở vietnamese_doc), không chỉ sai định dạng trình bày.
+3. **B1 (dòng tiếp nối rơi khỏi bảng/list)** — bug gây thiệt hại nặng nhất
+   ở từng mẫu bị ảnh hưởng (dominant cause của 31 dòng changed ở
+   time-new-roman, vỡ bảng nhìn thấy rõ ở vietnamese_doc, dọn luôn được #7
+   cũ) nhưng rủi ro hơn: fix duy nhất đã thử từng gây regression lan rộng.
+   Cần tín hiệu phát hiện chính xác hơn (thẳng cột + tỷ lệ khoảng-cách-dọc/
+   chiều-cao-dòng, giới hạn theo font/cỡ chữ khớp ngữ cảnh) trước khi thử
+   lại, verify từng bước với toàn bộ tập mẫu.
+4. **B4(a)/(d)** — bug thật, nhìn thấy được ở (a), chưa thấy ảnh hưởng
+   hình ảnh ở (d) nhưng sai về cấu trúc; chưa có ai thử fix. B4(c) đã có
+   fix (bị revert) — nên root-cause B6 trước khi thử lại B4(c)/mục "Đã thử
+   và revert" #3. B4(b) ưu tiên thấp (vô hình, chỉ mang tính cấu trúc).
+5. **B5 (cột rỗng bị xóa)** — chỉ mới thấy ở 1/6 mẫu (en/unicode), ưu tiên
+   thấp cho đến khi thấy lặp lại ở mẫu khác.
+6. **B6** — nên root-cause song song hoặc trước khi thử lại fix margin của
+   mục "Đã thử và revert" #3, để fix đó land mà không đánh đổi ssim/số
+   trang.
+
+Ngoài ra: cập nhật `vi/unicode/time-new-roman/original.docx` cho khớp
+`input.pdf` (xem mục "Không phải bug pdf2docx") để mẫu này đo B1 chính xác
+hơn, và cân nhắc sửa `extract_text_lines()` để đệ quy vào bảng lồng
+(giúp B2 không bị đánh giá thấp bởi chính công cụ eval).
