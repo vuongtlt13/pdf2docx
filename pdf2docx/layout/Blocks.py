@@ -220,17 +220,109 @@ class Blocks(ElementCollection):
             if not table_lines: return
             res.append(Lines(table_lines))
             table_lines.clear()
-        
-        
-        # check row by row 
+
+        def line_height(line):
+            '''The height of the line span with most characters.'''
+            span = max(line.spans, key=lambda s: len(s.text))
+            h = span.bbox.height if line.is_horizontal_text else span.bbox.width
+            return round(h, 2)
+
+        # A wrapped continuation line of an already-open table cell (e.g. the
+        # 2nd/3rd line of a multi-line cell) may not vertically overlap any
+        # sibling content at its own y-position, so it forms a singleton
+        # physical row and `is_flow_layout()` reports it as ordinary flow text
+        # (see eval/ISSUES.md bug B1). Recognize it as a continuation instead
+        # of closing the table, but only when it's tightly bound -- by column,
+        # gap and font size -- to a line already accumulated in this table, so
+        # unrelated content (headings, list items, headers/footers) that
+        # merely happens to overlap a narrow column isn't swept in too (that
+        # regression is why a column-alignment-only version of this check was
+        # reverted previously).
+        def lines_match(line, ref):
+            '''Whether ``line`` is tightly bound -- by column, gap and font
+            size -- to ``ref``, as for a wrapped-cell continuation.'''
+            x0, x1 = line.bbox.x0, line.bbox.x1
+            width = x1-x0
+            if width<=0: return False
+            lh = line_height(line)
+            if lh<=0: return False
+
+            # column containment relative to the candidate's OWN width --
+            # not the smaller of the two widths like `vertically_align_with`
+            # uses -- so a page-wide heading/fragment can't trivially
+            # "contain" a narrow table column (or vice versa) and be
+            # mistaken for its continuation. NOTE: an earlier version of the
+            # lookahead check (`is_table_lookahead_line`) relaxed this to
+            # containment-relative-to-the-smaller-width on the theory that
+            # `next_row` is already confirmed non-flow, but that's too weak a
+            # guarantee -- two short, unrelated, non-overlapping-in-x
+            # fragments (e.g. a stray zero-width-space run next to a short
+            # word) are enough to make a row look "non-flow" without being a
+            # real table, and the relaxed check then let an unrelated full
+            # label swallow into a bogus table via that narrow fragment (see
+            # eval/ISSUES.md bug B7 tightening note). Keep this symmetric
+            # own-width check for both directions.
+            rx0, rx1 = ref.bbox.x0, ref.bbox.x1
+            overlap = min(x1, rx1)-max(x0, rx0)
+            if overlap<=0 or overlap/width<constants.FACTOR_ALMOST: return False
+
+            # tight vertical gap between the candidate and this reference line
+            oh = line_height(ref)
+            gap = max(line.bbox.y0-ref.bbox.y1, ref.bbox.y0-line.bbox.y1)
+            if gap>2.0*max(lh, oh): return False
+
+            # similar font/line height, as for merging wrapped lines
+            # in `_join_lines_vertically()`
+            if max(lh, oh)>1.5*min(lh, oh): return False
+
+            return True
+
+        def is_table_continuation_line(line):
+            if not table_lines or is_list_item(line.text): return False
+
+            # if the open table_lines already contains a list-marker line
+            # (e.g. a bullet or number that got swept in as a bogus "column"
+            # alongside its text), it's a mis-detected list, not a real
+            # table -- don't extend it further onto this line.
+            if any(is_list_item(l.text) for l in table_lines): return False
+
+            return any(lines_match(line, ref) for ref in table_lines)
+
+        # Reverse-direction variant of the same problem (see eval/ISSUES.md
+        # bug B7): a wrapped cell's FIRST line can start earlier in y than
+        # its sibling columns in the same logical row -- e.g. inconsistent
+        # vertical cell-alignment in the source PDF (a long top-aligned
+        # column vs. short centered/bottom-aligned ones) -- so it forms its
+        # own singleton physical row *before* the row it actually belongs to
+        # has been processed, and `is_table_continuation_line()` has nothing
+        # in `table_lines` yet to match against. Look ahead one physical row:
+        # if there's already an open table (this is a continuation, not
+        # evidence a new table is starting) and the next row is unambiguously
+        # a real multi-column table row -- not flow text that merely happens
+        # to column-align with this line -- treat the singleton as the start
+        # of a new row instead of closing the table.
+        def is_table_lookahead_line(line, next_row):
+            if not table_lines or is_list_item(line.text): return False
+            if any(is_list_item(l.text) for l in table_lines): return False
+            if next_row is None or len(next_row)<=1: return False
+            if next_row.is_flow_layout(line_separate_threshold, cell_layout=cell_layout): return False
+
+            return any(lines_match(line, ref) for ref in next_row)
+
+        # check row by row
         ref_pos = rows[0].bbox.y1
         cell_layout = isinstance(self.parent, Cell)
-        for row in rows:
+        for i, row in enumerate(rows):
 
             bbox = row.bbox
+            next_row = rows[i+1] if i+1<len(rows) else None
 
             # flow layout or not?
-            if row.is_flow_layout(line_separate_threshold, cell_layout=cell_layout):
+            if len(row)==1 and (is_table_continuation_line(row[0]) or
+                    is_table_lookahead_line(row[0], next_row)):
+                table_lines.append(sub_line(row[0]))
+                added = {id(row[0])}
+            elif row.is_flow_layout(line_separate_threshold, cell_layout=cell_layout):
                 close_table()
                 added = set()
             elif kwargs.get('list_not_table') and is_list_item(row[0].text):

@@ -264,7 +264,6 @@ def is_list_item(text, bullets=True, numbers=True):
     If `bullets` is True we use an internal list of bullet characters;
     otherwise it should be a list of integer Unicode values.
     '''
-    return False
     if bullets is True:
         bullets2 = (
                 # From https://en.wikipedia.org/wiki/Bullet_(typography).

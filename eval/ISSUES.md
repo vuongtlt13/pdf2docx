@@ -94,6 +94,52 @@ hai mẫu. B1 hiện là bug ảnh hưởng lớn nhất còn lại tới `text_
 định có đầu tư fix hay tiếp tục hoãn thuộc về đánh giá rủi ro/lợi ích của
 người dùng.
 
+**Cập nhật (2026-07-27, sau khi fix B1 một phần):** bảng dưới đây thay thế
+bảng ở trên. Xem "Đã fix" #11 để biết chi tiết root cause/fix/verify.
+
+| mẫu                          | ssim   | text_sim | text_sim_strict | changed | số trang (gốc/ra) |
+|------------------------------|--------|----------|------------------|---------|-------------------|
+| en/unicode                   | 0.6963 | 0.9988   | 0.6122           | 19      | 2 / 2             |
+| vi/unicode/arial              | 0.9163 | 1.0000   | 0.8235           | 3       | 2 / 2             |
+| vi/unicode/calibri            | 0.7917 | 1.0000   | 0.8696           | 6       | 2 / 2             |
+| vi/unicode/mixed              | 0.8187 | 0.9976   | 0.9153           | 5       | 3 / 3             |
+| vi/unicode/time-new-roman     | 0.8179 | 0.9833   | 0.8235           | 12      | 3 / 3             |
+| vietnamese_doc                | 0.8003 | 0.9342   | 0.7059           | 15      | 2 / 2             |
+| **TỔNG**                      | **0.8069** | **0.9856** | **0.7917**   |     |                   |
+
+So với bảng trước: `vi/unicode/time-new-roman` cải thiện rõ nhất (text_sim
+0.9653→0.9833, text_strict 0.7397→0.8235, changed 19→12), `vietnamese_doc`
+cải thiện nhẹ (text_strict 0.6792→0.7059, changed 17→15). 4 mẫu còn lại giữ
+nguyên y hệt (không regression) — kể cả `vi/unicode/calibri` (có list
+bullet) và `en/unicode` (có heading/list dài) là 2 mẫu có rủi ro regression
+cao nhất theo bài học từ lần thử fix trước bị revert. ssim dao động
+±0.0002-0.0004 ở 2 mẫu cải thiện chỉ là nhiễu render LibreOffice đã biết.
+B1 **chưa đóng hẳn** — xem cập nhật trong mục B1 bên dưới về phần còn sót
+lại (bảng tràn qua ngắt trang vẫn vỡ thành nhiều `<w:tbl>`, do một cơ chế
+khác, chưa fix).
+
+**Cập nhật (2026-07-27, sau khi fix B7 một phần):** bảng dưới đây thay thế
+bảng ở trên. Xem "Đã fix" #12 để biết chi tiết root cause/fix/verify.
+
+| mẫu                          | ssim   | text_sim | text_sim_strict | changed | số trang (gốc/ra) |
+|------------------------------|--------|----------|------------------|---------|-------------------|
+| en/unicode                   | 0.6963 | 0.9988   | 0.6122           | 19      | 2 / 2             |
+| vi/unicode/arial              | 0.9163 | 1.0000   | 0.8235           | 3       | 2 / 2             |
+| vi/unicode/calibri            | 0.7917 | 1.0000   | 0.8696           | 6       | 2 / 2             |
+| vi/unicode/mixed              | 0.8187 | 0.9976   | 0.9153           | 5       | 3 / 3             |
+| vi/unicode/time-new-roman     | 0.8178 | 0.9884   | 0.8657           | 9       | 3 / 3             |
+| vietnamese_doc                | 0.8003 | 0.9342   | 0.7059           | 15      | 2 / 2             |
+| **TỔNG**                      | **0.8068** | **0.9865** | **0.7987**   |     |                   |
+
+So với bảng trước: `vi/unicode/time-new-roman` cải thiện tiếp (text_sim
+0.9833→0.9884, text_strict 0.8235→0.8657, changed 12→9) nhờ hàng 3 của bảng
+CRM được gộp lại đúng vào bảng chính. 5 mẫu còn lại giữ nguyên y hệt (không
+regression). `vietnamese_doc` không cải thiện từ fix này — chưa rõ nguyên
+nhân, để lại cho lần sau (xem đánh giá cuối mục "Đã fix" #12). Hàng 4/5 của
+bảng CRM (time-new-roman) vẫn còn vỡ — sub-case "dòng ứng viên rộng hơn
+dòng neo", chưa tìm được cách fix an toàn (xem "Đã thử và revert" trong
+mục #12).
+
 ## Đã fix
 
 1. **Thiếu khoảng trắng giữa các từ, thường xảy ra ngay trước một nguyên âm
@@ -243,6 +289,160 @@ người dùng.
       còn lại điểm số giữ nguyên y hệt** (không regression). Xác nhận qua
       `python-docx`: tiêu đề và đoạn thân bài giờ là 2 `<w:p>` riêng biệt.
 
+11. **B1 (một phần) — dòng tiếp nối bị wrap của một ô bảng đang mở, không
+    chồng lấn dọc với dòng nào khác ở đúng y đó, bị `is_flow_layout()` phân
+    loại nhầm thành văn bản thường, làm đóng bảng đang dựng dở quá sớm**
+    (`pdf2docx/layout/Blocks.py: collect_stream_lines()`; root cause đúng
+    như mô tả gốc trong mục B1 bên dưới: `is_flow_layout()` trả `True` ngay
+    khi cụm chỉ có 1 dòng).
+    - **Fix:** thêm hàm cục bộ `is_table_continuation_line(line)` trong
+      `collect_stream_lines()`, gọi **trước** `row.is_flow_layout(...)` cho
+      mọi hàng-1-dòng-đơn-độc. Khác với fix đã thử-và-revert trước đây (chỉ
+      so thẳng cột), hàm này kết hợp **4 tín hiệu** để tránh đúng kiểu
+      regression đã khiến lần thử trước bị revert (list bullet/header trang
+      bị hút vào bảng giả):
+      1. **Thẳng cột theo tỷ lệ riêng của dòng ứng viên** —
+         `overlap/width_dòng_ứng_viên >= FACTOR_ALMOST (0.95)`, KHÔNG dùng
+         `Element.vertically_align_with()` có sẵn vì hàm đó chuẩn hoá theo
+         **min** bề rộng 2 bbox — một tiêu đề rộng toàn trang sẽ luôn "chồng
+         lấn đủ" so với một cột hẹp bất kỳ nó tình cờ đè lên (đúng lỗi thiết
+         kế gây ra regression header/footer lần trước). Chuẩn hoá theo bề
+         rộng của chính dòng ứng viên loại bỏ được lỗ hổng này.
+      2. **Khoảng cách dọc chặt**: `gap <= 2.0 * max(chiều_cao_2_dòng)`.
+      3. **Font/chiều cao dòng tương đồng**: `max(h1,h2) <= 1.5*min(h1,h2)`
+         (tái dùng đúng công thức + ngưỡng `max_line_spacing_ratio` đã có ở
+         `_join_lines_vertically()`, xem "Đã fix" #10).
+      4. **Không phải marker list** (`is_list_item(line.text)` — xem phát
+         hiện phụ bên dưới) — cả cho chính dòng ứng viên, lẫn cho toàn bộ
+         `table_lines` đang mở (nếu `table_lines` đã lỡ chứa 1 dòng marker,
+         coi như "bảng" này thực chất là 1 list bị dựng nhầm, không mở rộng
+         thêm vào nó nữa).
+    - **Phát hiện phụ, phải fix kèm để (4) hoạt động được:**
+      `pdf2docx/common/share.py: is_list_item()` có `return False` ở ngay
+      dòng đầu thân hàm (che khuất ~40 dòng logic bên dưới nó — **luôn**
+      trả `False` bất kể input gì). Đây là code chết có từ nguyên commit
+      thượng nguồn giới thiệu hàm này (`bd3d1af`), không phải do phiên làm
+      việc trước. Ban đầu tưởng vô hại vì nhánh gọi nó
+      (`elif kwargs.get('list_not_table') and is_list_item(...)`) cũng
+      không bao giờ chạy do kwarg `list_not_table` chưa từng được forward
+      xuống `collect_stream_lines()` (xem ghi chú "dead code" ở B1 gốc) —
+      nhưng khi thêm tín hiệu (4) ở trên, `is_list_item()` được gọi trực
+      tiếp, không qua kwarg chết đó, nên `return False` thừa này **phải**
+      được xoá thì tín hiệu (4) mới có tác dụng thật. Xoá dòng này không
+      đổi hành vi ở đâu khác (nhánh `list_not_table` cũ vẫn chết y nguyên,
+      chưa fix — vẫn ngoài phạm vi B1, xem ghi chú cũ).
+    - **Không sửa `is_flow_layout()` trực tiếp** (để không đổi hợp đồng của
+      nó với các nơi gọi khác) — chặn đúng tại điểm gọi trong
+      `collect_stream_lines()`.
+    - **Verify — chạy `eval/run_eval.py` sau khi fix, đối chiếu toàn bộ 6
+      mẫu** (không chỉ 2 mẫu bị B1 ảnh hưởng rõ nhất):
+      - `vi/unicode/time-new-roman`: text_sim 0.9653→0.9833, text_strict
+        0.7397→0.8235, changed 19→12 (cải thiện, không regression).
+      - `vietnamese_doc`: text_strict 0.6792→0.7059, changed 17→15 (cải
+        thiện, text_sim/ssim không đổi).
+      - `vi/unicode/calibri` (list bullet — rủi ro regression cao nhất theo
+        bài học từ lần revert trước) và `en/unicode` (heading dài + list
+        "Key technical considerations" — cũng rủi ro cao): **điểm số giữ
+        nguyên y hệt**, xác nhận qua `text_diff.txt` không còn bullet nào bị
+        gộp lẫn (thử nghiệm đầu tiên, trước khi fix dead-code `is_list_item`
+        ở trên, ĐÃ gây đúng regression này trên `en/unicode`: 4 bullet
+        "Service Discovery/Circuit Breaking/Distributed Tracing/Payload
+        Serialization" bị gộp thành 1 dòng nối bằng `" | "` — text_strict
+        0.6122→0.4783 — fix dead-code `is_list_item()` ở trên giải quyết
+        đúng nguyên nhân, đưa điểm về lại baseline).
+      - `vi/unicode/arial`, `vi/unicode/mixed`: không đổi.
+    - **Xác nhận cấu trúc qua `python-docx`** (`body.findall(qn('w:tbl'))`):
+      bảng CRM ở `time-new-roman` từ *mỗi hàng một `<w:tbl>` + 1 đoạn văn
+      mồ côi chứa dòng wrap đầu* (mô tả gốc trong B1) giảm còn 1 `<w:tbl>`
+      3 hàng (header + 2 hàng đầu, nằm trọn trang 1) nối tiếp 4 `<w:tbl>`
+      1-hàng (4 hàng còn lại, đã tràn sang trang 2) — **không còn đoạn văn
+      mồ côi giữa các bảng ở phần đã fix**, nhưng phần tràn trang vẫn vỡ
+      thành nhiều bảng riêng (xem cập nhật B1 bên dưới — cơ chế khác, ngoài
+      phạm vi fix này). `vietnamese_doc` tương tự: giảm từ 5 `<w:tbl>` xen 4
+      đoạn văn mồ côi xuống 3 `<w:tbl>` xen 2 đoạn văn mồ côi.
+    - **Đánh giá:** B1 **chỉ được giải quyết một phần** — đúng cơ chế mô tả
+      gốc (dòng tiếp nối bị `is_flow_layout()` phân loại nhầm trong 1 vùng
+      bảng liền mạch) đã fix, xác nhận qua cải thiện điểm số + cấu trúc,
+      không regression ở mẫu nào. Phần còn sót lại (bảng tràn qua ngắt
+      trang vẫn vỡ thành nhiều `<w:tbl>`) là **một cơ chế khác, chưa root
+      cause** — xem cập nhật trong mục B1 bên dưới.
+
+12. **B7 (một phần) — cột "Mô tả chi tiết" wrap khiến dòng ĐẦU của cột đó
+    bắt đầu sớm hơn các cột còn lại trong cùng hàng logic, tách thành cụm
+    vật lý riêng, đóng bảng quá sớm** (biến thể ngược hướng của B1 — xem
+    root-cause đầy đủ trong mục B7 bên dưới).
+    - **Fix:** tách phần logic dùng chung của fix #11 ra hàm riêng
+      `lines_match(line, ref)` (4 tín hiệu y hệt #11: thẳng cột theo bề rộng
+      RIÊNG của dòng ứng viên `overlap/width>=FACTOR_ALMOST`, khoảng cách
+      dọc chặt, font/chiều cao tương đồng, không phải marker list), rồi
+      thêm hàm mới `is_table_lookahead_line(line, next_row)` tái dùng
+      `lines_match` nhưng đổi hướng so sánh: khi 1 hàng-1-dòng-đơn-độc không
+      match **lùi** (lookback) với `table_lines`, thử match **xuôi** với
+      hàng vật lý kế tiếp `rows[i+1]` — chỉ áp dụng khi (a) đã có bảng đang
+      mở (`table_lines` non-empty, tức đây là tiếp nối chứ không phải bằng
+      chứng 1 bảng mới bắt đầu) và (b) hàng kế tiếp **không phải** flow
+      layout (`is_flow_layout()==False`, tức 1 hàng bảng thật đa cột).
+      Vòng lặp đổi từ `for row in rows` sang `for i, row in enumerate(rows)`
+      để truy cập `rows[i+1]`.
+    - **Đã thử và revert: chuẩn hoá "thẳng cột" theo bề rộng NHỎ HƠN
+      (symmetric) riêng cho lookahead.** Ý tưởng ban đầu: vì `next_row` đã
+      được xác nhận `is_flow_layout()==False`, tưởng có thể nới lỏng tiêu
+      chí thẳng cột từ "theo bề rộng riêng dòng ứng viên" sang "theo
+      `min(bề_rộng_dòng, bề_rộng_ref)`" để bắt thêm ca dòng ứng viên **rộng
+      hơn** dòng neo (hàng 4/5 của bảng CRM, xem bên dưới). Biến thể này quả
+      thực fix nốt 2 hàng còn lại (`time-new-roman`: text_strict
+      0.8657→0.9538, changed 9→3) — **nhưng gây regression thật trên
+      `vi/unicode/mixed`** (text_sim 0.9976→0.9617, text_strict
+      0.9153→0.7778, changed 5→12): 1 đoạn văn dài ("4. Kiểm tra ký tự đặc
+      biệt và định dạng...") đứng ngay trước 2 dòng chữ ký ("Người kiểm
+      định"/"Ngày thực hiện") bị hút vào bảng giả. Nguyên nhân: mỗi dòng chữ
+      ký này bị PyMuPDF tách thành 2 mảnh không chồng-x (1 mảnh zero-width-
+      space + 1 từ ngắn, ví dụ `'Ngày'` rộng chỉ ~25.7pt cạnh 1 ký tự
+      `'​'`), nên `is_flow_layout()` nhầm hàng 2-mảnh này là "hàng bảng
+      thật đa cột" (`len>1` + `group_by_columns()>1`) dù **không phải**
+      (`original.docx` xác nhận khu vực này chỉ là đoạn văn + chữ ký, không
+      có bảng nào). Khi chuẩn hoá theo `min` bề rộng, nhãn đầy đủ "Người
+      kiểm định " (rộng ~92.4pt, là dòng cuối đoạn văn phía trên) chồng lấp
+      đủ so với bề rộng NHỎ của mảnh `'Ngày'` (~25.7pt) → tỷ lệ ~1.0, match
+      giả. Đây đúng loại lỗi thiết kế mà chuẩn hoá theo bề rộng riêng của
+      dòng ứng viên (fix #11, tín hiệu 1) được dựng lên để chặn — chỉ là
+      lần này lộ ra ở hướng lookahead thay vì lookback, và
+      `next_row.is_flow_layout()==False` (do artefact zero-width-space) là
+      tín hiệu "hàng kế tiếp là bảng thật" quá yếu để có thể nới lỏng thêm.
+      Đã revert về chuẩn hoá theo bề rộng riêng dòng ứng viên cho cả 2
+      hướng (lookback lẫn lookahead) — `lines_match()` chỉ có 1 công thức
+      duy nhất, không còn tham số symmetric.
+    - **Verify (bản đã giữ lại, an toàn) — chạy đủ 6 mẫu:**
+      - `vi/unicode/time-new-roman`: text_sim 0.9833→0.9884, text_strict
+        0.8235→0.8657, changed 12→9 (cải thiện, không regression).
+      - `vietnamese_doc`: điểm số giữ nguyên y hệt (không đổi) — Complex
+        Table không cải thiện với fix này (xem đánh giá bên dưới).
+      - 4 mẫu còn lại (`en/unicode`, `vi/unicode/arial`,
+        `vi/unicode/calibri`, `vi/unicode/mixed`): điểm số giữ nguyên y hệt
+        bản trước fix #12 (không regression) — xác nhận đúng bộ 2 mẫu rủi
+        ro cao nhất (`calibri`, `en/unicode`) không bị ảnh hưởng, và
+        `vi/unicode/mixed` (nơi biến thể symmetric đã regression) sạch trở
+        lại sau khi revert.
+    - **Xác nhận cấu trúc qua `python-docx`:** bảng CRM ở `time-new-roman`
+      — hàng 3 ("Quản lý khách hàng") giờ nằm gọn trong `<w:tbl>` chính (4
+      hàng: header + 3 hàng dữ liệu) thay vì tách thành 1 `<w:tbl>` riêng.
+      Hàng 4 và 5 **vẫn còn vỡ** thành 2 `<w:tbl>` 1-hàng riêng — đây là
+      biến thể "dòng ứng viên RỘNG HƠN dòng neo ở hàng kế tiếp" (ví dụ hàng
+      4: dòng ứng viên `'Bắn Auto Inbox cho Mộc San '` rộng ~108.2pt >
+      dòng neo `'và lọc dữ liệu SĐT khách '` ở hàng kế tiếp chỉ ~92.8pt,
+      nên `overlap/bề_rộng_riêng ≈ 0.857 < FACTOR_ALMOST`, bị từ chối đúng
+      như thiết kế) — **chưa fix được sub-case này**, vì hướng nới lỏng duy
+      nhất đã thử (chuẩn hoá theo min-width) bị chứng minh không an toàn ở
+      trên.
+    - **Đánh giá:** B7 **chỉ được giải quyết một phần** — sub-case "dòng
+      ứng viên hẹp hơn/bằng dòng neo ở hàng kế tiếp" đã fix (hàng 3 của
+      CRM). Sub-case "dòng ứng viên rộng hơn dòng neo" vẫn còn mở, chưa tìm
+      được cách fix an toàn trong lần này. `vietnamese_doc` (Complex Table)
+      không cải thiện chút nào (điểm số y hệt trước/sau fix #12) — có thể
+      không rơi đúng vào cơ chế B7 (dòng đầu ô wrap lệch y sớm hơn hàng kế
+      tiếp), hoặc rơi vào sub-case "rộng hơn" chưa fix được — **chưa điều
+      tra riêng trong lần này, để lại cho lần sau.**
+
 **Lưu ý về môi trường:** file `input.pdf` fallback tự sinh (dùng khi một
 mẫu chỉ có `original.docx`) được cache xuống đĩa ngay lần dùng đầu, vì việc
 render docx→pdf của LibreOffice có độ rung (jitter) trong cách dàn trang
@@ -288,6 +488,39 @@ Số thứ tự B1, B2, B4, B5, B6 giữ nguyên (không dồn lại) để kh�
 toàn bộ tham chiếu chéo đã có trong tài liệu này.
 
 ### B1. Dòng tiếp nối của một khối bị wrap (hàng bảng, list item, đoạn văn) rơi hẳn ra khỏi khối cha — bug cấu trúc nghiêm trọng nhất hiện tại (trước đây là #6 + #7)
+
+**Cập nhật (2026-07-27) — đã fix một phần, xem "Đã fix" #11 để biết chi
+tiết root cause/fix/verify.** Cơ chế "dòng-tiếp-nối-1-dòng-đơn-độc bị
+`is_flow_layout()` phân loại nhầm, ĐÓNG BẢNG QUÁ SỚM" mô tả trong mục này
+**đã được xử lý** khi nó xảy ra trong cùng 1 vùng bảng liền mạch (không cắt
+ngang bởi ngắt trang) — xác nhận qua cải thiện điểm số `text_sim`/
+`text_sim_strict` ở cả `vi/unicode/time-new-roman` và `vietnamese_doc`,
+không regression ở `vi/unicode/calibri` (list bullet) hay `en/unicode`
+(list "considerations" + heading dài), 2 mẫu rủi ro cao nhất. Dự đoán ban
+đầu trong mục "Vì sao khó fix an toàn" bên dưới (dải toạ độ y của 2 hàng
+logic khác nhau chồng lấn nhau) **hoá ra không xảy ra trên bộ mẫu hiện
+tại** — instrument trực tiếp cho thấy chỉ cần so cột theo tỷ lệ-của-chính-
+dòng-ứng-viên (không phải theo `min` bề rộng như `vertically_align_with()`)
++ khoảng cách dọc + font-size + loại-trừ-list-marker là đủ phân biệt đúng,
+không cần dựng lại theo cột-trước-hàng-sau như dự đoán.
+
+**Phần CHƯA fix, phát hiện mới khi verify cấu trúc bảng CRM
+(`vi/unicode/time-new-roman`) sau fix trên — xem B7 bên dưới để biết root
+cause đầy đủ (đã xác nhận, KHÔNG liên quan ngắt trang PDF như suy đoán ban
+đầu):** 3/5 hàng dữ liệu của bảng CRM vẫn vỡ ra thành `<w:tbl>` 1-hàng riêng
+lẻ dù không còn đoạn văn mồ côi. Ghi chú ban đầu (khi mới phát hiện) từng
+suy đoán đây là do "trang sau ngắt trang bị xử lý per-cột riêng lẻ" — suy
+đoán đó **sai**, đã bị bác bỏ bằng instrument trực tiếp: toàn bộ 46 dòng của
+bảng CRM (kể cả 5 hàng dữ liệu) được đưa vào **cùng một** lời gọi
+`collect_stream_lines()` duy nhất, không hề có ranh giới trang nào ở giữa.
+Root cause thật là một biến thể khác của đúng cơ chế B1 (dòng đơn độc bị
+`is_flow_layout()` phân loại nhầm) nhưng neo tham chiếu nằm ở hàng **PHÍA
+SAU** chứ không phải hàng đã tích luỹ trước đó, nên fix #11 (chỉ nhìn lùi về
+`table_lines` đã có) không bắt được. Xem B7 để biết chi tiết + hướng fix đề
+xuất.
+
+**Nội dung gốc bên dưới (trước 2026-07-27), giữ nguyên để tham khảo lịch
+sử:**
 
 - **Root cause đã xác nhận** trong `pdf2docx/common/Collection.py:
   is_flow_layout()`: hàm này trả về `True` (tức "văn bản thường") ngay khi
@@ -475,6 +708,65 @@ toàn bộ tham chiếu chéo đã có trong tài liệu này.
   mục "Đã thử và revert" #3, để fix đó có thể land mà không phải đánh đổi
   ssim/số trang.
 
+### B7. Hàng bảng có 1 cột "cao" hơn các cột khác (do wrap) khiến hàng đó bị `group_by_rows()` tách thành 2 cụm vật lý, cụm đầu (dòng đơn độc) đóng bảng quá sớm — root-caused 2026-07-27, đã fix một phần 2026-07-27 (xem "Đã fix" #12)
+
+**Đã root-cause đầy đủ (KHÔNG phải do ngắt trang PDF — ghi chú trước đây suy
+đoán vậy là sai, xem đính chính ở mục B1 phía trên).** Instrument trực tiếp
+`Blocks.collect_stream_lines()`/`TablesConstructor.stream_tables()` (in
+từng block bbox/text đưa vào mỗi lời gọi) trên
+`eval/samples/vi/unicode/time-new-roman/input.pdf` cho thấy:
+
+- Toàn bộ 46 dòng của bảng CRM (header + 5 hàng dữ liệu) được xử lý trong
+  **một** lời gọi `collect_stream_lines()` duy nhất (call #2, parent =
+  Column của cả trang nội dung) — không hề có ranh giới trang ở giữa. Kết
+  quả lời gọi này: `4 table_lines group(s), sizes=[15, 5, 5, 5]` — tức nó tự
+  tách thành 4 bảng riêng ngay tại bước group-by-row, trước khi
+  `is_table_continuation_line()` (fix #11) kịp can thiệp.
+- Cơ chế cụ thể cho hàng 3 ("Quản lý khách hàng" / "Chỉnh sửa thông tin SĐT
+  và địa chỉ..."): cột "Mô tả chi tiết" của hàng này wrap 2 dòng, dòng đầu
+  `'Chỉnh sửa thông tin SĐT và '` có bbox `y=(312.9, 322.7)`; nhưng 3 cột
+  còn lại của **cùng hàng logic** đó (`'Quản lý khách hàng '`, `'ĐĂNG'`,
+  `'Hoàn thành'`) đều có bbox bắt đầu ở `y=325.6` — **muộn hơn ~12.7pt**
+  (đúng 1 line-height) so với dòng đầu của cột Mô tả. Vì `group_by_rows()`
+  gom cụm theo chồng-lấn-y, dòng `'Chỉnh sửa thông tin SĐT và '` không
+  chồng-lấn-y với 3 cột kia → tách thành cụm vật lý riêng, **đúng 1 dòng** →
+  `is_flow_layout()` trả `True` ngay (`len<=1`) → bảng đang mở (đã có 15
+  dòng: header + hàng 1 + hàng 2) bị đóng lại (`close_table()`) trước khi
+  thấy nốt phần còn lại của hàng 3. Lặp lại y hệt ở hàng 4 và hàng 5 → 3
+  bảng 1-hàng riêng biệt.
+- **Vì sao fix #11 (`is_table_continuation_line()`) không bắt được ca này**:
+  fix đó chỉ so dòng-đơn-độc với các dòng **đã có sẵn** trong `table_lines`
+  (nhìn lùi). Nhưng neo đúng cho dòng `'Chỉnh sửa thông tin SĐT và '` không
+  nằm ở dòng nào đã tích luỹ trước đó (khoảng cách tới dòng gần nhất cùng
+  cột ở hàng 2, `'tương lai.'`/`y=287.5-297.3`, là ~28pt — vượt ngưỡng
+  `2.0*line_height` nên đúng ra phải bị từ chối, tránh nhầm 2 hàng khác nhau
+  làm 1) — mà nằm ở dòng `'địa chỉ mà vẫn giữ nguyên lịch '` (`y=325.6`,
+  cùng cột, gap chỉ ~2.9pt, đúng kiểu wrap-continuation) — dòng này lại
+  **nằm ở cụm vật lý PHÍA SAU**, chưa được xử lý/thêm vào `table_lines` tại
+  thời điểm cần quyết định. Nói cách khác đây là biến thể "dòng đầu của ô bị
+  wrap, mở sớm hơn phần còn lại của hàng" — ngược hướng với B1 gốc ("dòng
+  cuối của ô bị wrap, đóng muộn hơn"), nên cùng kiểu chỉ-nhìn-lùi không đủ.
+- **Root cause tại sao cột "Mô tả chi tiết" lại lệch y sớm hơn 3 cột kia
+  trong cùng 1 hàng**: nhiều khả năng do cách PDF gốc canh dọc nội dung ô
+  không đồng nhất giữa cột dài (top-aligned, tràn xuống ngay khi hàng bắt
+  đầu) và cột ngắn (căn giữa/căn đáy theo chiều cao thực tế của hàng) — đây
+  là đặc điểm của PDF nguồn, `pdf2docx` không kiểm soát được, chỉ có thể xử
+  lý ở tầng group-by-row/continuation-detection.
+- **Đã implement 2026-07-27 — xem "Đã fix" #12 để biết chi tiết fix/thử-và-
+  revert/verify.** Hướng fix: thêm `is_table_lookahead_line()` trong
+  `collect_stream_lines()`, nhìn tới (lookahead) hàng vật lý kế tiếp khi
+  nhìn-lùi thất bại, tái dùng đúng 4 tín hiệu của `is_table_continuation_line`
+  qua hàm dùng chung `lines_match()`. **Chỉ fix được sub-case "dòng ứng viên
+  hẹp hơn/bằng dòng neo ở hàng kế tiếp"** (hàng 3 của bảng CRM). Sub-case
+  "dòng ứng viên rộng hơn dòng neo" (hàng 4/5 của bảng CRM) đòi hỏi chuẩn hoá
+  theo bề rộng nhỏ hơn (symmetric) — đã thử và **revert** vì gây regression
+  thật trên `vi/unicode/mixed` (xem #12) — vẫn còn mở, chưa tìm được cách fix
+  an toàn.
+- Thấy ở: `vi/unicode/time-new-roman` (bảng CRM: sau fix #12 còn 1 bảng
+  4-hàng đúng + 2 bảng 1-hàng vỡ, ở 2/5 hàng dữ liệu — cải thiện từ 3/5 hàng
+  vỡ trước fix), `vietnamese_doc` (Complex Table: **không cải thiện chút
+  nào** sau fix #12 — chưa điều tra riêng xem có đúng cơ chế B7 hay không).
+
 ## Không phải bug pdf2docx — fixture lỗi thời
 
 - **[ĐÃ SỬA 2026-07-24] `vi/unicode/time-new-roman/original.docx` bị lệch
@@ -548,32 +840,30 @@ tiên sau khi xác minh lại: **không có mất dữ liệu thật** ("Date"/"
 `vi/unicode/mixed`) là bug thật nhưng mức độ thấp (vỡ cấu trúc đoạn văn,
 không mất nội dung):
 
-1. **B1 (dòng tiếp nối rơi khỏi bảng/list) — tạm hoãn (2026-07-24).** Bug
-   gây thiệt hại nặng nhất ở từng mẫu bị ảnh hưởng (dominant cause của 31
-   dòng changed ở time-new-roman, vỡ bảng nhìn thấy rõ ở vietnamese_doc,
-   dọn luôn được #7 cũ), nhưng root cause hoá ra sâu hơn ghi nhận trước
-   đây: không chỉ là `is_flow_layout()` đóng bảng quá sớm cho 1 dòng đơn
-   lẻ, mà là **cell cao bất thường khiến dải toạ độ y của 2 hàng bảng
-   logic khác nhau chồng lấn nhau** (xác nhận qua instrument trực tiếp ở
-   bảng CRM `vi/unicode/time-new-roman` — xem chi tiết trong mục B1 phía
-   trên). Một fix chỉ dựa tín hiệu hình học cục bộ (khớp cột + khoảng cách
-   dọc) không phân biệt được "dòng tiếp nối cell đang mở" với "giá trị
-   hàng mới cùng vị trí cột" — rủi ro đổi bug này thành bug khác (trộn
-   nhầm nội dung 2 hàng) chứ không chắc là sửa đúng. Cần dựng lại theo
-   cột-trước-hàng-sau, phạm vi lớn hơn hẳn B2/B3/B4 — quyết định hoãn lại,
-   ưu tiên B4 trước (nay B4 đã xong, đến lượt B1 cần được xem xét lại,
-   hoặc tiếp tục hoãn sang B5/B6 nếu vẫn đánh giá rủi ro quá cao).
-2. **B4(b)/(c)** còn lại chưa fix: (b) ưu tiên thấp (vô hình, chỉ mang
+1. **B1 — đã fix một phần (2026-07-27), xem "Đã fix" #11.** Cơ chế dòng-
+   tiếp-nối-1-dòng-đơn-độc bị đóng bảng quá sớm trong 1 vùng bảng liền mạch
+   đã xử lý xong (điểm số cải thiện ở 2 mẫu bị ảnh hưởng, không regression
+   ở 4 mẫu còn lại). Dự đoán cũ ("cell cao bất thường khiến 2 hàng logic
+   chồng lấn nhau, cần dựng lại cột-trước-hàng-sau") **không xảy ra trên bộ
+   mẫu hiện tại** — hoá ra không cần thiết kế lại lớn như dự đoán.
+2. **B7 (mới) — bảng tràn ngắt trang vỡ thành nhiều `<w:tbl>`.** Phần còn
+   sót lại sau khi fix B1: nội dung bảng ở trang sau ngắt trang bị xử lý
+   per-cột riêng lẻ, không gộp lại thành hàng đa-cột. Chưa root-cause —
+   ưu tiên cao vì đây giờ là nguyên nhân chính khiến `time-new-roman`/
+   `vietnamese_doc` vẫn còn `changed` > 0, nhưng cần điều tra thêm về luồng
+   xử lý bảng-tràn-trang trước khi biết độ phức tạp/rủi ro thực sự của fix.
+3. **B4(b)/(c)** còn lại chưa fix: (b) ưu tiên thấp (vô hình, chỉ mang
    tính cấu trúc — ảnh hưởng tìm/thay thế theo câu, điều hướng con trỏ,
    screen reader). (c) đã có fix (bị revert) — nên root-cause B6 trước
    khi thử lại B4(c)/mục "Đã thử và revert" #3.
-3. **B2 còn lại ("Ngày"/"Ngày thực hiện" tách rời ở `vi/unicode/mixed`)**
+4. **B2 còn lại ("Ngày"/"Ngày thực hiện" tách rời ở `vi/unicode/mixed`)**
    — không mất dữ liệu, chỉ vỡ cấu trúc đoạn văn; rủi ro fix tương tự B1
-   (điều kiện kích hoạt cùng nằm ở logic phát hiện bảng-giả/shading), nên
-   xử lý sau khi có tín hiệu phát hiện chắc chắn hơn từ việc giải quyết B1.
-4. **B5 (cột rỗng bị xóa)** — chỉ mới thấy ở 1/6 mẫu (en/unicode), ưu tiên
+   (điều kiện kích hoạt cùng nằm ở logic phát hiện bảng-giả/shading), nay
+   có thể xử lý dựa trên tín hiệu (thẳng-cột-theo-tỷ-lệ-riêng +
+   khoảng-cách + font-size) đã xác nhận hiệu quả ở fix B1 #11.
+5. **B5 (cột rỗng bị xóa)** — chỉ mới thấy ở 1/6 mẫu (en/unicode), ưu tiên
    thấp cho đến khi thấy lặp lại ở mẫu khác.
-5. **B6** — nên root-cause song song hoặc trước khi thử lại fix margin của
+6. **B6** — nên root-cause song song hoặc trước khi thử lại fix margin của
    mục "Đã thử và revert" #3, để fix đó land mà không đánh đổi ssim/số
    trang.
 
